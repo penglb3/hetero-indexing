@@ -2,8 +2,10 @@
 Indexing system for heterogeneous storages
 
 ## TODO
-- [ ] APIs (CRUD)
-- [ ] Runnable framework / basic version
+- [x] APIs (CRUD)
+- [ ] Implement/Copy backbone data structures.
+- [ ] Very basic runnable DRAM version
 - [ ] Test methods and perhaps a benchmark
+- [ ] PMem, SSD and HDD storage and optimization
 - [ ] Intelligent storage
 - [ ] More functionalities to wow everyone? 
