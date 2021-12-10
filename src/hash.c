@@ -1,6 +1,5 @@
 #include "hash.h"
 
-
 #define NUMBER64_1 11400714785074694791ULL
 #define NUMBER64_2 14029467366897019727ULL
 #define NUMBER64_3 1609587929392839161ULL
@@ -43,11 +42,13 @@ uint32_t hash_read32_align(const void *ptr, uint32_t align)
 }
 
 /*
-Function: string_key_hash_computation() 
+Function: hash
         A hash function for string keys
 */
-uint64_t string_key_hash_computation(const void *data, uint64_t length, uint64_t seed, uint32_t align)
+uint64_t hash(const void *data, uint64_t seed)
 {
+    uint64_t length = strlen(data);
+    uint32_t align = ((uint64_t)data & 7)==0;
     const uint8_t *p = (const uint8_t *)data;
     const uint8_t *end = p + length;
     uint64_t hash;
@@ -145,13 +146,4 @@ uint64_t string_key_hash_computation(const void *data, uint64_t length, uint64_t
     hash ^= hash >> 32;
 
     return hash;
-}
-
-uint64_t hash(const void *data, uint64_t length, uint64_t seed)
-{
-    if ((((uint64_t)data) & 7) == 0)
-    {
-        return string_key_hash_computation(data, length, seed, 1);
-    }
-    return string_key_hash_computation(data, length, seed, 0);
 }

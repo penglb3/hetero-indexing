@@ -2,7 +2,7 @@
 #define HASH_H
 
 #include <stdint.h>
-
+#include <string.h>
 /*
 Function: hash() 
         This function is used to compute the hash value of a string key;
@@ -10,6 +10,6 @@ Function: hash()
         For example, Jenkins Hash is used for the first hash funciton, and murmur3 hash is used for
         the second hash funciton.
 */
-uint64_t hash(const void *data, uint64_t length, uint64_t seed);
+uint64_t hash(const void *data, uint64_t seed);
 
 #endif
