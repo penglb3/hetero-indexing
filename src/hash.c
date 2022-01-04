@@ -1,149 +1,145 @@
+//-----------------------------------------------------------------------------
+// MurmurHash3 was written by Austin Appleby, and is placed in the public
+// domain. The author hereby disclaims copyright to this source code.
+
+// Note - The x86 and x64 versions do _not_ produce the same results, as the
+// algorithms are optimized for their respective platforms. You can still
+// compile and run any of them on any platform, but your performance with the
+// non-native version will be less than optimal.
 #include "hash.h"
+// Code adapted from https://github.com/PeterScott/murmur3/blob/master/murmur3.c
+//-----------------------------------------------------------------------------
+// Platform-specific functions and macros
 
-#define NUMBER64_1 11400714785074694791ULL
-#define NUMBER64_2 14029467366897019727ULL
-#define NUMBER64_3 1609587929392839161ULL
-#define NUMBER64_4 9650029242287828579ULL
-#define NUMBER64_5 2870177450012600261ULL
+#ifdef __GNUC__
+#define FORCE_INLINE __attribute__((always_inline)) inline
+#else
+#define FORCE_INLINE inline
+#endif
 
-#define hash_get64bits(x) hash_read64_align(x, align)
-#define hash_get32bits(x) hash_read32_align(x, align)
-#define shifting_hash(x, r) ((x << r) | (x >> (64 - r)))
-#define TO64(x) (((U64_INT *)(x))->v)
-#define TO32(x) (((U32_INT *)(x))->v)
-
-
-typedef struct U64_INT
+static FORCE_INLINE uint32_t rotl32 ( uint32_t x, int8_t r )
 {
-    uint64_t v;
-} U64_INT;
-
-typedef struct U32_INT
-{
-    uint32_t v;
-} U32_INT;
-
-uint64_t hash_read64_align(const void *ptr, uint32_t align)
-{
-    if (align == 0)
-    {
-        return TO64(ptr);
-    }
-    return *(uint64_t *)ptr;
+  return (x << r) | (x >> (32 - r));
 }
 
-uint32_t hash_read32_align(const void *ptr, uint32_t align)
+static FORCE_INLINE uint64_t rotl64 ( uint64_t x, int8_t r )
 {
-    if (align == 0)
-    {
-        return TO32(ptr);
-    }
-    return *(uint32_t *)ptr;
+  return (x << r) | (x >> (64 - r));
 }
 
-/*
-Function: hash
-        A hash function for string keys
-*/
-uint64_t hash(const void *data, uint64_t seed)
+#define	ROTL32(x,y)	rotl32(x,y)
+#define ROTL64(x,y)	rotl64(x,y)
+
+#define BIG_CONSTANT(x) (x##LLU)
+
+//-----------------------------------------------------------------------------
+// Block read - if your platform needs to do endian-swapping or can only
+// handle aligned reads, do the conversion here
+
+#define getblock(p, i) (p[i])
+
+//-----------------------------------------------------------------------------
+// Finalization mix - force all bits of a hash block to avalanche
+
+static FORCE_INLINE uint32_t fmix32 ( uint32_t h )
 {
-    uint64_t length = strlen(data);
-    uint32_t align = ((uint64_t)data & 7)==0;
-    const uint8_t *p = (const uint8_t *)data;
-    const uint8_t *end = p + length;
-    uint64_t hash;
+  h ^= h >> 16;
+  h *= 0x85ebca6b;
+  h ^= h >> 13;
+  h *= 0xc2b2ae35;
+  h ^= h >> 16;
 
-    if (length >= 32)
-    {
-        const uint8_t *const limitation = end - 32;
-        uint64_t v1 = seed + NUMBER64_1 + NUMBER64_2;
-        uint64_t v2 = seed + NUMBER64_2;
-        uint64_t v3 = seed + 0;
-        uint64_t v4 = seed - NUMBER64_1;
+  return h;
+}
 
-        do
-        {
-            v1 += hash_get64bits(p) * NUMBER64_2;
-            p += 8;
-            v1 = shifting_hash(v1, 31);
-            v1 *= NUMBER64_1;
-            v2 += hash_get64bits(p) * NUMBER64_2;
-            p += 8;
-            v2 = shifting_hash(v2, 31);
-            v2 *= NUMBER64_1;
-            v3 += hash_get64bits(p) * NUMBER64_2;
-            p += 8;
-            v3 = shifting_hash(v3, 31);
-            v3 *= NUMBER64_1;
-            v4 += hash_get64bits(p) * NUMBER64_2;
-            p += 8;
-            v4 = shifting_hash(v4, 31);
-            v4 *= NUMBER64_1;
-        } while (p <= limitation);
+//----------
 
-        hash = shifting_hash(v1, 1) + shifting_hash(v2, 7) + shifting_hash(v3, 12) + shifting_hash(v4, 18);
+static FORCE_INLINE uint64_t fmix64 ( uint64_t k )
+{
+  k ^= k >> 33;
+  k *= BIG_CONSTANT(0xff51afd7ed558ccd);
+  k ^= k >> 33;
+  k *= BIG_CONSTANT(0xc4ceb9fe1a85ec53);
+  k ^= k >> 33;
 
-        v1 *= NUMBER64_2;
-        v1 = shifting_hash(v1, 31);
-        v1 *= NUMBER64_1;
-        hash ^= v1;
-        hash = hash * NUMBER64_1 + NUMBER64_4;
+  return k;
+}
 
-        v2 *= NUMBER64_2;
-        v2 = shifting_hash(v2, 31);
-        v2 *= NUMBER64_1;
-        hash ^= v2;
-        hash = hash * NUMBER64_1 + NUMBER64_4;
+uint64_t MurmurHash3_x64_128 ( const void * key, const int len,
+                           const uint32_t seed)
+{
+  const uint8_t * data = (const uint8_t*)key;
+  const int nblocks = len / 16;
+  int i;
 
-        v3 *= NUMBER64_2;
-        v3 = shifting_hash(v3, 31);
-        v3 *= NUMBER64_1;
-        hash ^= v3;
-        hash = hash * NUMBER64_1 + NUMBER64_4;
+  uint64_t h1 = seed;
+  uint64_t h2 = seed;
 
-        v4 *= NUMBER64_2;
-        v4 = shifting_hash(v4, 31);
-        v4 *= NUMBER64_1;
-        hash ^= v4;
-        hash = hash * NUMBER64_1 + NUMBER64_4;
-    }
-    else
-    {
-        hash = seed + NUMBER64_5;
-    }
+  uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
+  uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
-    hash += (uint64_t)length;
+  //----------
+  // body
 
-    while (p + 8 <= end)
-    {
-        uint64_t k1 = hash_get64bits(p);
-        k1 *= NUMBER64_2;
-        k1 = shifting_hash(k1, 31);
-        k1 *= NUMBER64_1;
-        hash ^= k1;
-        hash = shifting_hash(hash, 27) * NUMBER64_1 + NUMBER64_4;
-        p += 8;
-    }
+  const uint64_t * blocks = (const uint64_t *)(data);
 
-    if (p + 4 <= end)
-    {
-        hash ^= (uint64_t)(hash_get32bits(p)) * NUMBER64_1;
-        hash = shifting_hash(hash, 23) * NUMBER64_2 + NUMBER64_3;
-        p += 4;
-    }
+  for(i = 0; i < nblocks; i++)
+  {
+    uint64_t k1 = getblock(blocks,i*2+0);
+    uint64_t k2 = getblock(blocks,i*2+1);
 
-    while (p < end)
-    {
-        hash ^= (*p) * NUMBER64_5;
-        hash = shifting_hash(hash, 11) * NUMBER64_1;
-        p++;
-    }
+    k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
 
-    hash ^= hash >> 33;
-    hash *= NUMBER64_2;
-    hash ^= hash >> 29;
-    hash *= NUMBER64_3;
-    hash ^= hash >> 32;
+    h1 = ROTL64(h1,27); h1 += h2; h1 = h1*5+0x52dce729;
 
-    return hash;
+    k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
+
+    h2 = ROTL64(h2,31); h2 += h1; h2 = h2*5+0x38495ab5;
+  }
+
+  //----------
+  // tail
+
+  const uint8_t * tail = (const uint8_t*)(data + nblocks*16);
+
+  uint64_t k1 = 0;
+  uint64_t k2 = 0;
+
+  switch(len & 15)
+  {
+  case 15: k2 ^= (uint64_t)(tail[14]) << 48;
+  case 14: k2 ^= (uint64_t)(tail[13]) << 40;
+  case 13: k2 ^= (uint64_t)(tail[12]) << 32;
+  case 12: k2 ^= (uint64_t)(tail[11]) << 24;
+  case 11: k2 ^= (uint64_t)(tail[10]) << 16;
+  case 10: k2 ^= (uint64_t)(tail[ 9]) << 8;
+  case  9: k2 ^= (uint64_t)(tail[ 8]) << 0;
+           k2 *= c2; k2  = ROTL64(k2,33); k2 *= c1; h2 ^= k2;
+
+  case  8: k1 ^= (uint64_t)(tail[ 7]) << 56;
+  case  7: k1 ^= (uint64_t)(tail[ 6]) << 48;
+  case  6: k1 ^= (uint64_t)(tail[ 5]) << 40;
+  case  5: k1 ^= (uint64_t)(tail[ 4]) << 32;
+  case  4: k1 ^= (uint64_t)(tail[ 3]) << 24;
+  case  3: k1 ^= (uint64_t)(tail[ 2]) << 16;
+  case  2: k1 ^= (uint64_t)(tail[ 1]) << 8;
+  case  1: k1 ^= (uint64_t)(tail[ 0]) << 0;
+           k1 *= c1; k1  = ROTL64(k1,31); k1 *= c2; h1 ^= k1;
+  };
+
+  //----------
+  // finalization
+
+  h1 ^= len; h2 ^= len;
+
+  h1 += h2;
+  h2 += h1;
+
+  h1 = fmix64(h1);
+  h2 = fmix64(h2);
+
+  h1 += h2;
+  h2 += h1;
+  // Note that here we xor-ed 2 uint64s to utilize their info, because output is only 64 bits
+  return h1^h2; 
 }

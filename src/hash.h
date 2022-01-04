@@ -1,15 +1,16 @@
 #ifndef HASH_H
 #define HASH_H
-
+// Code adapted from https://github.com/PeterScott/murmur3/blob/master/murmur3.h
 #include <stdint.h>
-#include <string.h>
-/*
-Function: hash() 
-        This function is used to compute the hash value of a string key;
-        For integer keys, two different and independent hash functions should be used. 
-        For example, Jenkins Hash is used for the first hash funciton, and murmur3 hash is used for
-        the second hash funciton.
-*/
-uint64_t hash(const void *data, uint64_t seed);
 
+#ifdef __cplusplus
+extern "C" {
 #endif
+// Note that this function actually returns 64 bit value now.
+uint64_t MurmurHash3_x64_128 ( const void * key, const int len,
+                           const uint32_t seed);
+#ifdef __cplusplus
+}
+#endif 
+
+#endif // HASH_H
