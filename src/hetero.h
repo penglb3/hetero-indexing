@@ -15,13 +15,17 @@ typedef struct{
 } entry;
 
 #define MEM_TYPE 1
-#define IO_TYPE 2
+#define SSD_TYPE 2
+#define HDD_TYPE 3
 
-#define BIN_CAPACITY 7
+#define BIN_CAPACITY 8
+#define BIN_FLAG_TYPE uint8_t
+#define FULL_FLAG (1<<BIN_CAPACITY) - 1
+
 typedef struct entry_bin{
-    uint8_t count;
-    uint8_t status[BIN_CAPACITY]; //* 0=empty, 1=pmem, 2=io 
-    struct entry_bin* next;
+    // uint8_t count;
+    // uint8_t status[BIN_CAPACITY]; //* 0=empty, 1=pmem, 2=io 
+    // struct entry_bin* next;
     entry data[BIN_CAPACITY];
 } bin;
 
@@ -29,10 +33,9 @@ typedef struct index_sys_metadata{
     uint64_t seed;
     uint64_t size;
     uint64_t count;
+    BIN_FLAG_TYPE* occupied;
     bin* entries;
 } index_sys;
-
-#define MAX_CHAIN_LEN 4
 /*
 Args:
 > size:  # of bins of the indexing system, must be power of 2
@@ -44,9 +47,7 @@ Returns:
 index_sys* index_construct(uint64_t size, uint64_t seed);
 void index_destruct(index_sys* index);
 
-int index_resize(index_sys* index, uint64_t new_size);
-#define index_expand(ind) index_resize((ind), (ind)->size * 2)
-#define index_shrink(ind) index_resize((ind), (ind)->size / 2)
+int index_expand(index_sys* index);
 #define SHRINK_THRESHOLD 0.8
 
 // Basic CRUD APIs, I mean, what could go wrong?

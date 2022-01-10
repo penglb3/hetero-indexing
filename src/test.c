@@ -1,14 +1,17 @@
 #include"hetero.h"
 #include<unistd.h>
 #include<stdio.h>
+#include<time.h>
+
+
 // toy example
 int main(int argc, char* argv[]){
-    uint64_t size = 1<<3, num_entries = 500, seed = 0;
+    uint64_t size = 1<<14, num_entries = 500000, seed = 0;
     debug = do_nothing;
     int c;
-    while((c = getopt(argc, argv, "s:n:dr:"))!=-1)
+    while((c = getopt(argc, argv, "s:n:di:"))!=-1)
         switch(c){
-            case 'r': seed = atoi(optarg); break;
+            case 'i': seed = atoi(optarg); break;
             case 's': size = 1<<atoi(optarg);break;
             case 'n': num_entries = atoi(optarg);break;
             case 'd': debug = printf;break;
@@ -19,10 +22,12 @@ int main(int argc, char* argv[]){
         printf("init failed: %d\n",c);
         return -1;
     }
-    printf("size = %ld, # of samples = %ld, seed: %ld\n", size, num_entries, index->seed);
+    printf("Initial size = %ld, # of samples = %ld, seed: %ld\n", size, num_entries, index->seed);
     uint64_t key, val;
     uint8_t* val_ret;
     // insertion
+    printf("Insert Test: ");
+    clock_t start = clock(),finish;
     for(uint64_t key=0; key<num_entries; key++){
         c = index_insert(index, (const uint8_t*)&key, (const uint8_t*)&key, 1);
         if(c){
@@ -30,8 +35,11 @@ int main(int argc, char* argv[]){
             return 1;
         }
     }
-    printf("Insertion all done. \n# of entries in indexing system:%ld, size of it:%ld\n", index->count, index->size);
+    finish = clock() - start;
+    printf("Finished in %.3lf s. \n# of entries in indexing system:%ld, size of it:%ld\n", (double)finish / CLOCKS_PER_SEC, index->count, index->size);
     // query
+    printf("Query Test: ");
+    start = clock();
     for(uint64_t i=0; i<num_entries; i++){
         key = (uint64_t)&i;
         val_ret = index_query(index, (const uint8_t*)key);
@@ -40,8 +48,11 @@ int main(int argc, char* argv[]){
             return 2;
         }
     }
-    printf("Query all OK.\n");
+    finish = clock() - start;
+    printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
     // update
+    printf("Update Test: ");
+    start = clock();
     for(uint64_t i=0; i<num_entries; i++){
         key = (uint64_t)&i;
         val = 2*i;
@@ -52,8 +63,11 @@ int main(int argc, char* argv[]){
             return 3;
         }
     }
-    printf("Update all OK.\n");
+    finish = clock() - start;
+    printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
     // removal
+    printf("Remove Test: ");
+    start = clock();
     for(uint64_t i=0; i<num_entries; i++){
         c = index_delete(index, (const uint8_t*)&i);
         if(c){
@@ -61,11 +75,11 @@ int main(int argc, char* argv[]){
             return 4;
         }
     }
+    finish = clock() - start;
     if(index->count==0)
-        printf("Remove all OK.\n");
+        printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
     else
-        printf("Removal is buggy: # of active entries in indexing system:%ld\n", index->count);
-    printf("Test finished\n");
+        printf("Buggy: # of active entries in indexing system = %ld\n", index->count);
     index_destruct(index);
     return 0;
 }
