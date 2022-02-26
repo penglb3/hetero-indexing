@@ -1,19 +1,16 @@
 #include "hetero.h"
-#include "atomic.h"
+
 int do_nothing(const char* format, ...){return 0;};
 
-#define HASH_IDX(index, data) (MurmurHash3_x64_128((data), KEY_LEN, (index)->seed) & ((index)->size - 1))
-#define HASH_LEVEL(index, data) ((MurmurHash3_x64_128((data), KEY_LEN, (index)->seed) & ((index)->size)) != 0)
-#define SET_BIT(unit, i) unit |= 1<<(i)
+#define HASH_IDX(hash_s, data) (MurmurHash3_x64_128((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
+#define HASH_LEVEL(hash_s, data) ((MurmurHash3_x64_128((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size)) != 0)
+#define SET_BIT(unit, i) AO_OR_F((unit), (1<<(i)))
 #define UNSET_BIT(unit, i) unit &= ~(1<<(i))
 #define TEST_BIT(unit, i) (unit & (1<<(i)))
 
-void index_destruct(index_sys* index){
-    free(index->entries);
-    free(index->occupied);
-    free(index);
-}
-void stat(index_sys* index){
+uint64_t count[BIN_CAPACITY*2+2] = {0};
+
+void log_stat(hash_sys* hash_s, uint64_t* count_){
     unsigned int table[256] = 
     { 
         0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 
@@ -33,156 +30,223 @@ void stat(index_sys* index){
         3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 
         4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8, 
     }; 
-    int count[BIN_CAPACITY+1]={0}, sum=0;
-    for(uint64_t i=0; i<index->size; i++)
-        count[table[index->occupied[i]&0xff] + table[(index->occupied[i]>>8)&0xff]]++;
-    debug("Utilization: %.3lf\n", (double)(index->count) / index->size);
+    for(uint64_t i=0; i<hash_s->size; i++)
+        count_[table[hash_s->occupied[i]&0xff] + table[(hash_s->occupied[i]>>8)&0xff]]++;
+}
+
+void show_stat(hash_sys* hash_s){
+    uint64_t sum = hash_s->size >> 1;
+    debug("Load factor (before expand): %.3lf%\n", (double)(hash_s->count) / (hash_s->size * BIN_CAPACITY) * 200 );
     debug("BIN#\t: COUNT\n");
     for(int i=0; i<=BIN_CAPACITY; i++)
-        debug("%d\t: %d\n", i, count[i]), sum += count[i];
-    debug("ALL\t: %d\n\n", sum);
+        debug("%d\t: %-10d -> %d\n", i, count[i], count[i+BIN_CAPACITY+1]), sum += count[i] - count[i+BIN_CAPACITY+1];
+    if(sum)
+        debug("[WARNING] before - after = %ld, which is not 0!\n", sum);
+    debug("\n");
+    memset(count, 0, sizeof(uint64_t)*(BIN_CAPACITY*2+2));
 }
-index_sys* index_construct(uint64_t size, uint64_t seed){
+
+void hash_destruct(hash_sys* hash_s){
+    free(hash_s->entries);
+    free(hash_s->occupied);
+    free(hash_s);
+}
+
+hash_sys* hash_construct(uint64_t size, uint64_t seed){
     // allocate space for metadata structure
-    index_sys* index = malloc(sizeof(index_sys));
-    if(!index) 
+    hash_sys* hash_s = malloc(sizeof(hash_sys));
+    if(!hash_s) 
         return NULL;
     if(seed==0){// generate seeds
         srand(time(NULL));
-        index->seed = ((uint64_t)rand()<<32) | rand();
+        hash_s->seed = ((uint64_t)rand()<<32) | rand();
     }
     else 
-        index->seed = seed;
+        hash_s->seed = seed;
     // initialize other members
-    index->entries = aligned_alloc(64, size*sizeof(bin));
-
-    // TODO: 1. really need? 2. Any quicker way?
-    index->size = size;
-    index->count = 0;
-    index->occupied = malloc(size*sizeof(BIN_FLAG_TYPE));
-    if(!index->entries || !index->occupied) 
+    hash_s->size = size;
+    hash_s->count = 0;
+    hash_s->entries = aligned_alloc(64, size*sizeof(bin));
+    hash_s->occupied = calloc(size, sizeof(binflag_t));
+    if(!hash_s->entries || !hash_s->occupied) 
         return NULL;
-    memset(index->occupied, 0, size*sizeof(BIN_FLAG_TYPE));
+    return hash_s;
+}
+
+int hash_expand_copy(hash_sys* hash_s){
+    bin* curr, *new_entries = aligned_alloc(64, hash_s->size*sizeof(bin)*2);
+    if(debug != do_nothing){
+        log_stat(hash_s, count);
+    }
+    binflag_t temp, *new_occupied = malloc(hash_s->size*2*sizeof(binflag_t));
+    memcpy(new_entries, hash_s->entries, hash_s->size*sizeof(bin));
+    memcpy(new_entries + hash_s->size, hash_s->entries, hash_s->size*sizeof(bin));
+    memcpy(new_occupied, hash_s->occupied, hash_s->size*sizeof(binflag_t));
+    memcpy(new_occupied + hash_s->size, hash_s->occupied, hash_s->size*sizeof(binflag_t));
+    
+    for(uint64_t i=0; i<hash_s->size; i++){
+        if(!hash_s->occupied[i]) continue;
+        temp = 0;
+        curr = hash_s->entries + i;
+        for(int j=0; j<BIN_CAPACITY; j++){
+            if(TEST_BIT(new_occupied[i], j) && HASH_LEVEL(hash_s, curr->data[j].key))
+                temp |= (1<<j); 
+        }
+        new_occupied[i] &= ~temp;
+        new_occupied[i + hash_s->size] &= temp;
+    }
+    free(hash_s->entries);
+    hash_s->entries = new_entries;
+    free(hash_s->occupied);
+    hash_s->occupied = new_occupied;
+    hash_s->size *= 2;
+    if(debug != do_nothing){
+        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", hash_s->size);
+        log_stat(hash_s, count+BIN_CAPACITY+1);
+        show_stat(hash_s);
+    }
+    return 0;
+};
+
+int hash_expand_reinsert(hash_sys* hash_s){
+    hash_sys* new_index = hash_construct(hash_s->size*2, hash_s->seed);
+    if(debug != do_nothing){
+        log_stat(hash_s, count);
+    }
+    bin* curr;
+    for(uint64_t i=0; i<hash_s->size; i++){
+        if(!hash_s->occupied[i]) continue;
+        curr = hash_s->entries + i;
+        for(int j=0; j<BIN_CAPACITY; j++){
+            if(TEST_BIT(hash_s->occupied[i], j))
+                hash_insert(new_index, curr->data[j].key, curr->data[j].value);
+        }
+    }
+    free(hash_s->entries);
+    hash_s->entries = new_index->entries;
+    free(hash_s->occupied);
+    hash_s->occupied = new_index->occupied;
+    free(new_index);
+    hash_s->size *= 2;
+    if(debug != do_nothing){
+        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", hash_s->size);
+        log_stat(hash_s, count+BIN_CAPACITY+1);
+        show_stat(hash_s);
+    }
+    return 0;
+};
+
+int hash_modify(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int mode){
+    // TODO: check for duplication?
+    uint64_t idx = HASH_IDX(hash_s, key);
+    bin* target = hash_s->entries + idx;
+    int j = 0;
+    //check for existence
+    for(j=0; j<BIN_CAPACITY; j++) {
+        if(TEST_BIT(hash_s->occupied[idx], j) && *(uint64_t*)target->data[j].key == *(uint64_t*)key){
+            break;
+        }
+    }
+    if(mode == STRICT_UPDATE && j == BIN_CAPACITY)
+        return ELEMENT_NOT_FOUND; // In strict update, insertion is not allowed!
+    if(mode == STRICT_INSERT && j < BIN_CAPACITY)
+        return ELEMENT_ALREADY_EXISTS; // In strict insertion, inplace update is not allowed!
+    // ------------------- Update data -----------------------------------
+    if(j == BIN_CAPACITY){ // When key is not found
+        if(hash_s->occupied[idx]==FULL_FLAG) // and the bin is FULL,
+            return HASH_BIN_FULL; // Please expand or put it somewhere else.
+        // Otherwise just find a place to insert:
+        for(j=0; j<BIN_CAPACITY && TEST_BIT(hash_s->occupied[idx], j); j++);
+    }
+    // Since the space is empty, we can directly write!
+    *(uint64_t*)target->data[j].key = *(uint64_t*)key;
+    *(uint64_t*)target->data[j].value = *(uint64_t*)value;
+    // ------------------- Update metadata -------------------------------
+    // TODO: the following actions need to be [CRITICAL]
+    if(!TEST_BIT(hash_s->occupied[idx], j)){
+        SET_BIT(hash_s->occupied + idx, j);
+        hash_s->count++;
+    }
+    // TODO: [CRITICAL] ends
+    return 0;
+};
+
+uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*hash_callback)(hash_sys* hash_s, uint64_t i, int j)){
+    uint64_t key_int64 = *(uint64_t*)key, i = HASH_IDX(hash_s, key);
+    bin* target = hash_s->entries + i;
+    for(int j=0; j<BIN_CAPACITY; j++)
+        if(TEST_BIT(hash_s->occupied[i], j) && *(uint64_t*)target->data[j].key == key_int64)
+            return hash_callback(hash_s, i, j);
+    return NULL;
+}
+
+uint8_t* query_callback(hash_sys* hash_s, uint64_t i, int j){
+    return hash_s->entries[i].data[j].value;
+}
+
+uint8_t* delete_callback(hash_sys* hash_s, uint64_t i, int j){
+    UNSET_BIT(hash_s->occupied[i], j);
+    hash_s->count--;
+    return (void*)0x1;
+}
+
+// -------------- INDEX SYS --------------
+
+index_sys* index_construct(uint64_t hash_size, uint64_t seed){
+    index_sys* index = calloc(1, sizeof(index_sys));
+    if(!index) 
+        return NULL;
+    index->hash = hash_construct(hash_size, seed);
+    if(!index->hash) 
+        return NULL;
+    index->tree = calloc(1, sizeof(art_tree));
+    art_tree_init(index->tree);
     return index;
 }
 
-int index_expand(index_sys* index){
-    bin* curr, *new_entries = aligned_alloc(64, index->size*sizeof(bin)*2);
-    debug("[Debug] <!> index_resize with size %ld start, *ent=%p\n", index->size*2, index->entries);
-    stat(index);
-    BIN_FLAG_TYPE temp, *new_occupied = malloc(index->size*2*sizeof(BIN_FLAG_TYPE));
-    memcpy(new_entries, index->entries, index->size*sizeof(bin));
-    memcpy(new_entries + index->size, index->entries, index->size*sizeof(bin));
-    memcpy(new_occupied, index->occupied, index->size*sizeof(BIN_FLAG_TYPE));
-    memcpy(new_occupied + index->size, index->occupied, index->size*sizeof(BIN_FLAG_TYPE));
-    
-    for(uint64_t i=0; i<index->size; i++){
-        if(!index->occupied[i]) continue;
-        temp = 0;
-        curr = index->entries + i;
-        for(int j=0; j<BIN_CAPACITY; j++){
-            if(TEST_BIT(new_occupied[i], j) && HASH_LEVEL(index, curr->data[j].key))
-                SET_BIT(temp, j);
-        }
-        //debug("bin %d: flag=%x\n", i, temp);
-        new_occupied[i] &= ~temp;
-        new_occupied[i + index->size] &= temp;
-    }
-    free(index->entries);
-    index->entries = new_entries;
-    free(index->occupied);
-    index->occupied = new_occupied;
-    index->size *= 2;
-    debug("[Debug] <!> index_resize with size %ld ends\n", index->size);
-    stat(index);
-    return 0;
-};
-
-int index_expand_reinsert(index_sys* index){
-    index_sys* new_index = index_construct(index->size*2, index->seed);
-    debug("[Debug] <!> index_resize with size %ld and count %ld start, *ent=%p\n", new_index->size, index->entries, index->count);
-    bin* curr;
-    for(uint64_t i=0; i<index->size; i++){
-        if(!index->occupied[i]) continue;
-        curr = index->entries + i;
-        for(int j=0; j<BIN_CAPACITY; j++){
-            if(TEST_BIT(index->occupied[i], j))
-                index_insert(new_index, curr->data[j].key, curr->data[j].value, MEM_TYPE);
-        }
-    }
-    free(index->entries);
-    index->entries = new_index->entries;
-    free(index->occupied);
-    index->occupied = new_index->occupied;
-    free(new_index);
-    index->size *= 2;
-    debug("[Debug] <!> index_resize with size %ld ends\n", index->size);
-    return 0;
-};
+void index_destruct(index_sys* index){
+    hash_destruct(index->hash);
+    art_tree_destroy(index->tree);
+    free(index->tree);
+    free(index);
+}
 
 int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int storage_type){
-    // TODO: check for duplication?
-    uint64_t idx = HASH_IDX(index, key);
-    // ------------------- Find/Create the bin to insert into --------------------
-    if(index->occupied[idx]==FULL_FLAG){
-        index_expand_reinsert(index); // suppose rehashing is done in expansion.
-        idx = HASH_IDX(index, key);
+    int status;
+    void* c = NULL;
+    if(storage_type == MEM_TYPE){
+    REINSERT:
+        status = hash_modify(index->hash, key, value, INSERT);
+        if(status == 0){
+            return 0;
+        }
+        // if(status == HASH_BIN_FULL){
+        //     hash_expand(index->hash);
+        //     goto REINSERT;
+        // }
     }
-    bin* target = index->entries + idx;
-    // ------------------- Insert into the bin referenced by 'target' --------------------
-    int j=0;
-    if(storage_type==MEM_TYPE){ // If data is on dram/pmem, place at front
-        for(j=0; j<BIN_CAPACITY && TEST_BIT(index->occupied[idx], j);) j++;
-    }
-    else{ // else place at back.
-        for(j=BIN_CAPACITY-1; j>=0 && TEST_BIT(index->occupied[idx], j);) j--;
-    } 
-    if(j==BIN_CAPACITY || j<0)
-        debug("[ERROR] j should be between [0, %d], but now is %d. With flags=%2x\n", BIN_CAPACITY-1, j, index->occupied[idx]);
-    *(uint64_t*)target->data[j].key = *(uint64_t*)key;
-    *(uint64_t*)target->data[j].value = *(uint64_t*)value;
-    // ------------------- Update metadata ---------------------
-    // TODO: the following actions need to be [ATOMIC]
-    SET_BIT(index->occupied[idx], j);
-    index->count++;
-    // [ATOMIC] END
-    return 0;
-};
-
-entry* index_entry_query(index_sys* index, const uint8_t* key){
-    uint64_t key_int64 = *(uint64_t*)key, i = HASH_IDX(index, key);
-    bin* target = index->entries + i;
-    for(int j=0; j<BIN_CAPACITY; j++)
-        if(TEST_BIT(index->occupied[i], j) && *(uint64_t*)target->data[j].key == key_int64)
-            return target->data+j;
-    return NULL;
+    return art_insert_no_replace(index->tree, key, KEY_LEN, (void*)value)!=NULL;
 }
 
 uint8_t* index_query(index_sys* index, const uint8_t* key){
-    entry* item = index_entry_query(index, key);
-    if(item)
-        return item->value;
-    return NULL;
-};
+    uint8_t* result = hash_query(index->hash, key);
+    if(result) 
+        return result;
+    return art_search(index->tree, key, KEY_LEN);
+}
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
-    entry* item = index_entry_query(index, key);
-    if(item){
-        // TODO: make it (explicitly) atomic? cacheline size 64 bit? 
-        // TODO: consider race condition?
-        *(uint64_t*)item->value = *(uint64_t*)value;
-        return 0; // OK
+    int status = hash_update(index->hash, key, value);
+    if(status == ELEMENT_NOT_FOUND){
+        return art_insert(index->tree, key, KEY_LEN, (void*)value) == NULL;
     }
-    return 1; // element not found;
-};
+    return 0;
+}
+
 int index_delete(index_sys* index, const uint8_t* key){
-    uint64_t key_int64 = *(uint64_t*)key, i = HASH_IDX(index, key);
-    bin* target = index->entries + i;
-    for(int j=0; j<BIN_CAPACITY; j++)
-        if(TEST_BIT(index->occupied[i], j) && *(uint64_t*)target->data[j].key==*(uint64_t*)key){
-            UNSET_BIT(index->occupied[i], j);
-            index->count--;
-            return 0;
-        }
-    return 1;
-};
+    int status = hash_delete(index->hash, key);
+    if(status == ELEMENT_NOT_FOUND){
+        return art_delete(index->tree, key, KEY_LEN) == NULL;
+    }
+    return 0;
+}
