@@ -59,5 +59,5 @@
 /* Atomic bit unsetting via mask, returns new value. 通过掩码，设置某个位为0，并返还新的值 */
 #define AO_BIT_OFF(ptr, mask)       AO_AND_F((ptr), ~(mask))
 /* Atomic bit flipping via mask, returns new value. 通过掩码，交换某个位，1变0，0变1，并返还新的值 */
-#define AO_BIT_XCHG(ptr, mask)      AO_XOR_F((ptr), (mask))
+#define AO_BIT_FLIP(ptr, mask)      AO_XOR_F((ptr), (mask))
 #endif // ATOMIC_H

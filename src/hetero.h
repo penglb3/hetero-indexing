@@ -8,6 +8,7 @@
 #include "hash.h"
 #include "atomic.h"
 #include "art.h"
+#include "data_sketch.h"
 
 int do_nothing(const char* format, ...);
 int (*debug)(const char*, ...);
@@ -27,6 +28,8 @@ typedef struct{
 typedef uint8_t binflag_t;
 #define BIN_CAPACITY 8
 #define FULL_FLAG (1<<BIN_CAPACITY) - 1
+#define CM_DEPTH 8
+#define CM_WIDTH 1024
 
 typedef struct entry_bin{
     entry data[BIN_CAPACITY];
@@ -36,7 +39,7 @@ typedef struct hash_metadata{
     uint64_t seed;
     uint64_t size;
     uint64_t count;
-    art_tree* tree;
+    sketch* cm;
     binflag_t* occupied;
     bin* entries;
 } hash_sys;
@@ -100,7 +103,7 @@ uint8_t* delete_callback(hash_sys* h, uint64_t i, int j);
 uint8_t* hash_search(
     hash_sys* h, 
     const uint8_t* key, 
-    uint8_t* (*hash_callback)(hash_sys* h, uint64_t i, int j)
+    uint8_t* (*callback)(hash_sys*, uint64_t, int)
 );
 #define hash_query(hash_s, key) hash_search((hash_s), (key), query_callback)
 #define hash_delete(hash_s, key) (hash_search((hash_s), (key), delete_callback) ? 0 : ELEMENT_NOT_FOUND)

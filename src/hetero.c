@@ -5,7 +5,7 @@ int do_nothing(const char* format, ...){return 0;};
 #define HASH_IDX(hash_s, data) (MurmurHash3_x64_128((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
 #define HASH_LEVEL(hash_s, data) ((MurmurHash3_x64_128((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size)) != 0)
 #define SET_BIT(unit, i) AO_OR_F((unit), (1<<(i)))
-#define UNSET_BIT(unit, i) unit &= ~(1<<(i))
+#define UNSET_BIT(unit, i) AO_AND_F(unit, (~(1<<(i))))
 #define TEST_BIT(unit, i) (unit & (1<<(i)))
 
 uint64_t count[BIN_CAPACITY*2+2] = {0};
@@ -47,6 +47,7 @@ void show_stat(hash_sys* hash_s){
 }
 
 void hash_destruct(hash_sys* hash_s){
+    countmin_destroy(hash_s->cm);
     free(hash_s->entries);
     free(hash_s->occupied);
     free(hash_s);
@@ -66,9 +67,10 @@ hash_sys* hash_construct(uint64_t size, uint64_t seed){
     // initialize other members
     hash_s->size = size;
     hash_s->count = 0;
+    hash_s->cm = countmin_init(CM_WIDTH, CM_DEPTH);
     hash_s->entries = aligned_alloc(64, size*sizeof(bin));
     hash_s->occupied = calloc(size, sizeof(binflag_t));
-    if(!hash_s->entries || !hash_s->occupied) 
+    if(!hash_s->entries || !hash_s->occupied || !hash_s->cm) 
         return NULL;
     return hash_s;
 }
@@ -171,21 +173,22 @@ int hash_modify(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int 
     return 0;
 };
 
-uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*hash_callback)(hash_sys* hash_s, uint64_t i, int j)){
+uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, uint64_t, int)){
     uint64_t key_int64 = *(uint64_t*)key, i = HASH_IDX(hash_s, key);
     bin* target = hash_s->entries + i;
     for(int j=0; j<BIN_CAPACITY; j++)
         if(TEST_BIT(hash_s->occupied[i], j) && *(uint64_t*)target->data[j].key == key_int64)
-            return hash_callback(hash_s, i, j);
+            return callback(hash_s, i, j);
     return NULL;
 }
 
 uint8_t* query_callback(hash_sys* hash_s, uint64_t i, int j){
+    countmin_log(hash_s->cm, hash_s->entries[i].data[j].key, KEY_LEN);
     return hash_s->entries[i].data[j].value;
 }
 
 uint8_t* delete_callback(hash_sys* hash_s, uint64_t i, int j){
-    UNSET_BIT(hash_s->occupied[i], j);
+    UNSET_BIT(hash_s->occupied + i, j);
     hash_s->count--;
     return (void*)0x1;
 }
@@ -197,11 +200,10 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
     if(!index) 
         return NULL;
     index->hash = hash_construct(hash_size, seed);
-    if(!index->hash) 
-        return NULL;
     index->tree = calloc(1, sizeof(art_tree));
-    art_tree_init(index->tree);
-    return index;
+    if(!index->hash || !index->tree) 
+        return NULL;
+    return art_tree_init(index->tree)? NULL : index;
 }
 
 void index_destruct(index_sys* index){

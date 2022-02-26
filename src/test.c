@@ -3,7 +3,6 @@
 #include<stdio.h>
 #include<time.h>
 
-
 // toy example
 int main(int argc, char* argv[]){
     uint64_t size = 1<<14, num_entries = 500000, seed = 0;
