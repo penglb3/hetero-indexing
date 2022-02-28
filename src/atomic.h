@@ -1,5 +1,7 @@
 # ifndef ATOMIC_H
 # define ATOMIC_H
+
+# include <stdbool.h>
 /* Memory barrier */
   #define barrier()             	(__sync_synchronize())
 /* Atomic get */
@@ -60,4 +62,11 @@
 #define AO_BIT_OFF(ptr, mask)       AO_AND_F((ptr), ~(mask))
 /* Atomic bit flipping via mask, returns new value. 通过掩码，交换某个位，1变0，0变1，并返还新的值 */
 #define AO_BIT_FLIP(ptr, mask)      AO_XOR_F((ptr), (mask))
+
+#include <stdatomic.h>
+#define SET_BIT(ptr, i) atomic_fetch_or((ptr), (1<<(i)))
+#define UNSET_BIT(ptr, i) atomic_fetch_and((ptr), (~(1<<(i))))
+#define TEST_BIT(unit, i) (unit & (1<<(i)))
+
+
 #endif // ATOMIC_H

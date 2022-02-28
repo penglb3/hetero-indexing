@@ -49,7 +49,6 @@ int countmin_query(sketch* cm, void* data, uint32_t len){
     return minimal;
 };
 
-#define SET_BIT(unit, i) AO_OR_F((unit), (1<<(i)))
 #define TEST_BIT(unit, i) (unit & (1<<(i)))
 
 void bloom_add(sketch* b, void* data, uint32_t len){

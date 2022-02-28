@@ -5,7 +5,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "hash.h"
+#include "murmur3.h"
 #include "atomic.h"
 
 typedef struct {
