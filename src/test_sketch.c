@@ -20,14 +20,14 @@ int main(){
         switch (op)
         {
         case 1:
-            bloom_log(bloom, str, LEN);
+            bloom_add(bloom, str, LEN);
             printf("Bloom Filters:\n");
             for(int i=0; i<bloom->width/32; i++)
                 printf("%.8x ",bloom->counts[i]);
             printf("\n");
             break;
         case 2:
-            res = bloom_query(bloom, str, LEN);
+            res = bloom_exists(bloom, str, LEN);
             printf("Bloom filter: I have %s seen this.\n", res?"probably":"never");
             break;
         case 3:

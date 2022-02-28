@@ -6,16 +6,18 @@
 // toy example
 int main(int argc, char* argv[]){
     uint64_t size = 1<<14, num_entries = 500000, seed = 0;
+    double load_factor = -1;
     debug = do_nothing;
     hash_expand = hash_expand_copy;
     int c;
-    while((c = getopt(argc, argv, "s:n:di:r"))!=-1)
+    while((c = getopt(argc, argv, "s:n:di:rf:"))!=-1)
         switch(c){
             case 'i': seed = atoi(optarg); break;
             case 's': size = 1<<atoi(optarg);break;
             case 'n': num_entries = atoi(optarg);break;
             case 'd': debug = printf;break;
             case 'r': hash_expand = hash_expand_reinsert; break;
+            case 'f': sscanf(optarg, "%lf", &load_factor); break;
             default : abort();
         }
     index_sys* index = index_construct(size, seed);
@@ -26,13 +28,14 @@ int main(int argc, char* argv[]){
     printf("Initial size = %ldx%d, # of samples = %ld, seed: %ld\n", index->hash->size, BIN_CAPACITY, num_entries, index->hash->seed);
     uint64_t key, val;
     uint8_t* val_ret;
+
     // insertion
     printf("Insert Test: ");
     clock_t start = clock(),finish;
     for(uint64_t key=0; key<num_entries; key++){
         size = index->hash->count;
         c = index_insert(index, (const uint8_t*)&key, (const uint8_t*)&key, MEM_TYPE);
-        if(index->hash->count > size && size < BIN_CAPACITY*index->hash->size*0.95+10 && size >= BIN_CAPACITY*index->hash->size*0.95)
+        if(index->hash->count > size && load_factor >= 0 && size < BIN_CAPACITY*index->hash->size*load_factor+10 && size >= BIN_CAPACITY*index->hash->size*load_factor)
             printf("[Note] Key #%ld inserted into hash table (%ld)\n", key, index->hash->count);
         if(c){
             printf("!! insertion of key-value pair <%ld,%ld> failed. !!\n", key, key);
@@ -42,6 +45,14 @@ int main(int argc, char* argv[]){
     finish = clock() - start;
     printf("Finished in %.3lf s. \n# of entries in indexing system:%ld(%ld+%ld), size of hash table:%ldx%d\n", 
         (double)finish / CLOCKS_PER_SEC, index->hash->count + index->tree->size, index->hash->count, index->tree->size, index->hash->size, BIN_CAPACITY);
+
+    // expansion
+    printf("Expansion Test (%s): ", hash_expand==hash_expand_copy?"copy":"reinsert");
+    start = clock();
+    hash_expand(index->hash);
+    finish = clock() - start;
+    printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
+
     // query
     printf("Query Test: ");
     start = clock();
@@ -57,6 +68,7 @@ int main(int argc, char* argv[]){
     }
     finish = clock() - start;
     printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
+
     // update
     printf("Update Test: ");
     start = clock();

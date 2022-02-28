@@ -19,6 +19,10 @@ hash.o: hash.c hash.h
 data_sketch.o: data_sketch.c data_sketch.h hash.h
 	$(CC) $(CFLAGS) -o $@ -c $<
 
+# Data sketching scheme testing program, has nothing to do with the main program
+test_sketch: test_sketch.c data_sketch.c hash.c
+	$(CC) $(CFLAGS) -o $@ $^ 
+
 .PHONY: clean
 clean:
 	rm *.o $(EXEC)

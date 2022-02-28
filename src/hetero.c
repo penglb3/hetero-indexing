@@ -47,7 +47,6 @@ void show_stat(hash_sys* hash_s){
 }
 
 void hash_destruct(hash_sys* hash_s){
-    countmin_destroy(hash_s->cm);
     free(hash_s->entries);
     free(hash_s->occupied);
     free(hash_s);
@@ -67,10 +66,9 @@ hash_sys* hash_construct(uint64_t size, uint64_t seed){
     // initialize other members
     hash_s->size = size;
     hash_s->count = 0;
-    hash_s->cm = countmin_init(CM_WIDTH, CM_DEPTH);
     hash_s->entries = aligned_alloc(64, size*sizeof(bin));
     hash_s->occupied = calloc(size, sizeof(binflag_t));
-    if(!hash_s->entries || !hash_s->occupied || !hash_s->cm) 
+    if(!hash_s->entries || !hash_s->occupied) 
         return NULL;
     return hash_s;
 }
@@ -183,7 +181,6 @@ uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(
 }
 
 uint8_t* query_callback(hash_sys* hash_s, uint64_t i, int j){
-    countmin_log(hash_s->cm, hash_s->entries[i].data[j].key, KEY_LEN);
     return hash_s->entries[i].data[j].value;
 }
 
@@ -201,7 +198,8 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
         return NULL;
     index->hash = hash_construct(hash_size, seed);
     index->tree = calloc(1, sizeof(art_tree));
-    if(!index->hash || !index->tree) 
+    index->cm = countmin_init(CM_WIDTH, CM_DEPTH);
+    if(!index->hash || !index->tree || !index->cm) 
         return NULL;
     return art_tree_init(index->tree)? NULL : index;
 }
@@ -209,6 +207,7 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
 void index_destruct(index_sys* index){
     hash_destruct(index->hash);
     art_tree_destroy(index->tree);
+    countmin_destroy(index->cm);
     free(index->tree);
     free(index);
 }
@@ -231,6 +230,7 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
 }
 
 uint8_t* index_query(index_sys* index, const uint8_t* key){
+    countmin_log(index->cm, (void*)key, KEY_LEN);
     uint8_t* result = hash_query(index->hash, key);
     if(result) 
         return result;

@@ -28,8 +28,6 @@ typedef struct{
 typedef uint8_t binflag_t;
 #define BIN_CAPACITY 8
 #define FULL_FLAG (1<<BIN_CAPACITY) - 1
-#define CM_DEPTH 8
-#define CM_WIDTH 1024
 
 typedef struct entry_bin{
     entry data[BIN_CAPACITY];
@@ -39,7 +37,6 @@ typedef struct hash_metadata{
     uint64_t seed;
     uint64_t size;
     uint64_t count;
-    sketch* cm;
     binflag_t* occupied;
     bin* entries;
 } hash_sys;
@@ -114,7 +111,12 @@ int hash_expand_reinsert(hash_sys* h);
 
 
 // --------------Index System-----------------
+#define CM_DEPTH 8
+#define CM_WIDTH 1024
+#define MEMB_WIDTH (1 << 13)
+#define MEMB_DEPTH 7
 typedef struct index{
+    sketch *cm, *memb;
     hash_sys* hash;
     art_tree* tree;
 } index_sys;

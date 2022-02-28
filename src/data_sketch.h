@@ -27,7 +27,8 @@ void sketch_destroy(sketch* cm);
 void countmin_log(sketch* cm, void* data, uint32_t len);
 int countmin_query(sketch* cm, void* data, uint32_t len);
 
-void bloom_log(sketch* b, void* data, uint32_t len);
-int bloom_query(sketch* b, void* data, uint32_t len);
+void bloom_add(sketch* b, void* data, uint32_t len);
+int bloom_exists(sketch* b, void* data, uint32_t len);
+void bloom_expand(sketch* b);
 
 #endif // DATA_SKETCH_H

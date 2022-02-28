@@ -52,7 +52,7 @@ int countmin_query(sketch* cm, void* data, uint32_t len){
 #define SET_BIT(unit, i) AO_OR_F((unit), (1<<(i)))
 #define TEST_BIT(unit, i) (unit & (1<<(i)))
 
-void bloom_log(sketch* b, void* data, uint32_t len){
+void bloom_add(sketch* b, void* data, uint32_t len){
     uint32_t idx, bit;
     for(int i=0; i<b->depth; i++){
         // Calculate the hash index
@@ -63,7 +63,7 @@ void bloom_log(sketch* b, void* data, uint32_t len){
     }
 }
 
-int bloom_query(sketch* b, void* data, uint32_t len){
+int bloom_exists(sketch* b, void* data, uint32_t len){
     uint32_t idx, bit;
     for(int i=0; i<b->depth; i++){
         // Calculate the hash index
@@ -76,3 +76,9 @@ int bloom_query(sketch* b, void* data, uint32_t len){
     return 1;
 }
 
+void bloom_expand(sketch* b){
+    free(b->counts);
+    b->width *= 2;
+    // We will also clear the filter when we expand.
+    b->counts = calloc(b->width / (sizeof(uint32_t)*8), sizeof(uint32_t));
+}
