@@ -24,7 +24,11 @@ void index_destruct(index_sys* index){
 
 int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int storage_type){
     int status;
-    void* c = NULL;
+    if(*(uint64_t*)key == 0){
+        atomic_store(& index->has_zero_key, 1);
+        atomic_store((uint64_t*)index->val_for_zero, *(uint64_t*)value);
+        return 0;
+    }
     if(storage_type == MEM_TYPE){
     REINSERT:
         status = hash_modify(index->hash, key, value, INSERT);
@@ -41,6 +45,13 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
 
 uint8_t* index_query(index_sys* index, const uint8_t* key){
     countmin_log(index->cm, (void*)key, KEY_LEN);
+    if(*(uint64_t*)key == 0){
+        if(atomic_load(& index->has_zero_key)){
+            return index->val_for_zero;
+        }
+        else
+            return NULL;
+    }
     uint8_t* result = hash_query(index->hash, key);
     if(result) 
         return result;
@@ -48,6 +59,11 @@ uint8_t* index_query(index_sys* index, const uint8_t* key){
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
+    if(*(uint64_t*)key == 0){
+        atomic_store(& index->has_zero_key, 1);
+        atomic_store((uint64_t*)index->val_for_zero, *(uint64_t*)value);
+        return 0;
+    }
     int status = hash_update(index->hash, key, value);
     if(status == ELEMENT_NOT_FOUND){
         return art_insert(index->tree, key, KEY_LEN, (void*)value) == NULL;
@@ -56,9 +72,17 @@ int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
 }
 
 int index_delete(index_sys* index, const uint8_t* key){
+    if(*(uint64_t*)key == 0){
+        uint8_t s = 1;
+        return !atomic_compare_exchange_strong(& index->has_zero_key, &s, 0);
+    }
     int status = hash_delete(index->hash, key);
-    if(status == ELEMENT_NOT_FOUND){
+    if(status){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }
     return 0;
+}
+
+uint64_t index_size(index_sys* index){
+    return index->hash->count + index->tree->size + index->has_zero_key;
 }

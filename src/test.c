@@ -1,7 +1,7 @@
-#include"hetero.h"
-#include<unistd.h>
-#include<stdio.h>
-#include<time.h>
+#include <getopt.h>
+#include <stdio.h>
+#include <time.h>
+#include "hetero.h"
 
 // toy example
 int main(int argc, char* argv[]){
@@ -43,13 +43,13 @@ int main(int argc, char* argv[]){
         }
     }
     finish = clock() - start;
-    printf("Finished in %.3lf s. \n# of entries in indexing system:%ld(%ld+%ld), size of hash table:%ldx%d\n", 
-        (double)finish / CLOCKS_PER_SEC, index->hash->count + index->tree->size, index->hash->count, index->tree->size, index->hash->size, BIN_CAPACITY);
+    printf("Finished in %.3lf s. \n# of entries in indexing system:%ld(%ld+%ld+%d), size of hash table:%ldx%d\n", 
+        (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key, index->hash->size, BIN_CAPACITY);
 
     // expansion
     printf("Expansion Test (%s): ", hash_expand==hash_expand_copy?"copy":"reinsert");
     start = clock();
-    hash_expand(index->hash);
+    hash_expand(&index->hash);
     finish = clock() - start;
     printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
 
@@ -60,8 +60,8 @@ int main(int argc, char* argv[]){
         key = (uint64_t)&i;
         val_ret = index_query(index, (const uint8_t*)key);
         if(val_ret==NULL || (*(uint64_t*)(val_ret)) != i){
-            printf("!! query of key %ld failed:", i);
-            printf("val_ret %s, ", val_ret?"non null":"null");
+            printf("!! query of key %ld failed ", i);
+            printf("(val_ret %p-%s, ", val_ret, val_ret?"non null":"null");
             printf("result %s)\n", (*(uint64_t*)(val_ret)) != i?"not equal":"equal");
             return 2;
         }
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]){
     start = clock();
     for(uint64_t i=0; i<num_entries; i++){
         key = (uint64_t)&i;
-        val = 2*i;
+        val = 2*i + 1;
         c = index_update(index, (const uint8_t*)key, (const uint8_t*)&val);
         val_ret = index_query(index, (const uint8_t*)key);
         if(c || val_ret==NULL || (*(uint64_t*)(val_ret)) != val){
@@ -87,6 +87,7 @@ int main(int argc, char* argv[]){
     }
     finish = clock() - start;
     printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
+    
     // removal
     printf("Remove Test: ");
     start = clock();
@@ -98,10 +99,10 @@ int main(int argc, char* argv[]){
         }
     }
     finish = clock() - start;
-    if(index->hash->count==0 && index->tree->size==0)
-        printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
+    if(index_size(index)==0)
+        printf("Passed Clean in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
     else
-        printf("Buggy: #(hash) = %ld, #(tree) = %ld\n", index->hash->count, index->tree->size);
+        printf("Buggy: #(hash) = %lu, #(tree) = %lu\n", index->hash->count, index->tree->size);
     index_destruct(index);
     return 0;
 }

@@ -67,40 +67,36 @@ hash_sys* hash_construct(uint64_t size, uint64_t seed){
     // initialize other members
     hash_s->size = size;
     hash_s->count = 0;
-    hash_s->entries = aligned_alloc(64, size*sizeof(bin));
+    hash_s->entries = calloc(size, sizeof(bin));
     hash_s->occupied = calloc(size, sizeof(binflag_t));
     if(!hash_s->entries || !hash_s->occupied) 
         return NULL;
     return hash_s;
 }
 
-int hash_expand_copy(hash_sys* hash_s){
-    bin* curr, *new_entries = aligned_alloc(64, hash_s->size*sizeof(bin)*2);
+int hash_expand_copy(hash_sys** hash_ptr){
+    hash_sys* hash_s = atomic_load(hash_ptr), *new_h = hash_construct(hash_s->size * 2, hash_s->seed);
+    bin* curr, *new_entries = new_h->entries;
     if(debug != do_nothing){
         log_stat(hash_s, count);
     }
-    binflag_t temp, *new_occupied = malloc(hash_s->size*2*sizeof(binflag_t));
     memcpy(new_entries, hash_s->entries, hash_s->size*sizeof(bin));
     memcpy(new_entries + hash_s->size, hash_s->entries, hash_s->size*sizeof(bin));
-    memcpy(new_occupied, hash_s->occupied, hash_s->size*sizeof(binflag_t));
-    memcpy(new_occupied + hash_s->size, hash_s->occupied, hash_s->size*sizeof(binflag_t));
     
-    for(uint64_t i=0; i<hash_s->size; i++){
-        if(!hash_s->occupied[i]) continue;
-        temp = 0;
-        curr = hash_s->entries + i;
+    for(uint64_t i=0; i < hash_s->size; i++){
+        curr = new_entries + i;
         for(int j=0; j<BIN_CAPACITY; j++){
-            if(TEST_BIT(new_occupied[i], j) && HASH_LEVEL(hash_s, curr->data[j].key))
-                temp |= (1<<j); 
+            if(*(uint64_t*)curr->data[j].key != 0){
+                if(HASH_LEVEL(hash_s, curr->data[j].key))
+                    *(uint64_t*)curr->data[j].key = 0;
+                else
+                    *(uint64_t*)(curr+hash_s->size)->data[j].key = 0;
+            }
         }
-        new_occupied[i] &= ~temp;
-        new_occupied[i + hash_s->size] &= temp;
     }
-    free(hash_s->entries);
-    hash_s->entries = new_entries;
-    free(hash_s->occupied);
-    hash_s->occupied = new_occupied;
-    hash_s->size *= 2;
+    new_h->count = hash_s->count;
+    atomic_store(hash_ptr, new_h);
+    hash_destruct(hash_s);
     if(debug != do_nothing){
         debug("[Debug] <!> hash_expand_copy with size %ld ends\n", hash_s->size);
         log_stat(hash_s, count+BIN_CAPACITY+1);
@@ -109,26 +105,21 @@ int hash_expand_copy(hash_sys* hash_s){
     return 0;
 };
 
-int hash_expand_reinsert(hash_sys* hash_s){
-    hash_sys* new_index = hash_construct(hash_s->size*2, hash_s->seed);
+int hash_expand_reinsert(hash_sys** hash_ptr){
+    hash_sys* hash_s = atomic_load(hash_ptr), *new_h = hash_construct(hash_s->size*2, hash_s->seed);
     if(debug != do_nothing){
         log_stat(hash_s, count);
     }
     bin* curr;
-    for(uint64_t i=0; i<hash_s->size; i++){
-        if(!hash_s->occupied[i]) continue;
+    for (uint64_t i = 0; i < hash_s->size; i++){
         curr = hash_s->entries + i;
-        for(int j=0; j<BIN_CAPACITY; j++){
-            if(TEST_BIT(hash_s->occupied[i], j))
-                hash_insert(new_index, curr->data[j].key, curr->data[j].value);
+        for (int j = 0; j < BIN_CAPACITY; j++){
+            if (*(uint64_t *)curr->data[j].key)
+                hash_insert(new_h, curr->data[j].key, curr->data[j].value);
         }
     }
-    free(hash_s->entries);
-    hash_s->entries = new_index->entries;
-    free(hash_s->occupied);
-    hash_s->occupied = new_index->occupied;
-    free(new_index);
-    hash_s->size *= 2;
+    atomic_store(hash_ptr, new_h);
+    hash_destruct(hash_s);
     if(debug != do_nothing){
         debug("[Debug] <!> hash_expand_copy with size %ld ends\n", hash_s->size);
         log_stat(hash_s, count+BIN_CAPACITY+1);
@@ -137,8 +128,7 @@ int hash_expand_reinsert(hash_sys* hash_s){
     return 0;
 };
 
-int hash_modify(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int mode){
-    // TODO: check for duplication?
+int hash_modify_old(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int mode){
     uint64_t idx = HASH_IDX(hash_s, key);
     bin* target = hash_s->entries + idx;
     int j = 0;
@@ -172,7 +162,7 @@ int hash_modify(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int 
     return 0;
 };
 
-uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, uint64_t, int)){
+uint8_t* hash_search_old(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, uint64_t, int)){
     uint64_t key_int64 = *(uint64_t*)key, i = HASH_IDX(hash_s, key);
     bin* target = hash_s->entries + i;
     for(int j=0; j<BIN_CAPACITY; j++)
@@ -181,12 +171,62 @@ uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(
     return NULL;
 }
 
-uint8_t* query_callback(hash_sys* hash_s, uint64_t i, int j){
+uint8_t* query_callback_old(hash_sys* hash_s, uint64_t i, int j){
     return hash_s->entries[i].data[j].value;
 }
 
-uint8_t* delete_callback(hash_sys* hash_s, uint64_t i, int j){
+uint8_t* delete_callback_old(hash_sys* hash_s, uint64_t i, int j){
     UNSET_BIT(hash_s->occupied + i, j);
     hash_s->count--;
+    return (void*)0x1;
+}
+
+int hash_modify(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int mode){
+    uint64_t idx = HASH_IDX(hash_s, key), comp = 0, key_i64 = *(uint64_t*)key, key_h;
+    bin* target = hash_s->entries + idx;
+    int j = 0, available = -1;
+    for(j = 0; j < BIN_CAPACITY; j++){ // Try update
+        key_h = atomic_load((uint64_t*)target->data[j].key);
+        if(key_h == key_i64){
+            if(mode == STRICT_INSERT)
+                return ELEMENT_ALREADY_EXISTS;
+            atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+            return 0;
+        }
+        if(key_h == 0 && available == -1)
+            available = j;
+    }
+    if(mode == STRICT_UPDATE)
+        return ELEMENT_NOT_FOUND; // In strict update, insertion is not allowed!
+    if(available == -1)
+        return HASH_BIN_FULL;
+    for(j = available; j < BIN_CAPACITY; j++){
+        comp = 0;
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, key_i64)){
+            atomic_fetch_add(& hash_s->count, 1);
+            atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+            return 0;
+        }
+    }
+    return HASH_BIN_FULL;
+}
+
+uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, entry*)){
+    uint64_t key_i64 = *(uint64_t*)key, i = HASH_IDX(hash_s, key);
+    bin* target = hash_s->entries + i;
+    for(int j=0; j<BIN_CAPACITY; j++){
+        if(atomic_load((uint64_t*)target->data[j].key) == key_i64)
+            return callback(hash_s, target->data + j);
+    }
+    return NULL;
+}
+
+uint8_t* query_callback(hash_sys *h, entry* e){
+    return e->value;
+}
+
+uint8_t* delete_callback(hash_sys *h, entry* e){
+    atomic_store((uint64_t*)e->key, 0);
+    atomic_fetch_sub(& h->count, 1);
     return (void*)0x1;
 }

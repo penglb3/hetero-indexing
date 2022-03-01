@@ -38,12 +38,11 @@ void hash_destruct(hash_sys* h);
 
 #define UPDATE 0
 #define INSERT 1
-#define STRICT 2
 #define STRICT_UPDATE 2
 #define STRICT_INSERT 3
 
-#define HASH_BIN_FULL 1
-#define ELEMENT_NOT_FOUND 2
+#define HASH_BIN_FULL 2
+#define ELEMENT_NOT_FOUND 1
 #define ELEMENT_ALREADY_EXISTS 3
 /**
 * Unified modification 
@@ -66,8 +65,8 @@ int hash_modify(hash_sys* h, const uint8_t* key, const uint8_t* value, int mode)
 * @arg j: The key's offset in the bin
 * @return the value w.r.t. the key for query, or constant 1 for delete
 */
-uint8_t* query_callback(hash_sys* h, uint64_t i, int j);
-uint8_t* delete_callback(hash_sys* h, uint64_t i, int j);
+uint8_t* query_callback(hash_sys* h, entry* e);
+uint8_t* delete_callback(hash_sys* h, entry* e);
 /**
 * Unified search
 * @arg h:           the hash system to operate on
@@ -79,11 +78,11 @@ uint8_t* delete_callback(hash_sys* h, uint64_t i, int j);
 uint8_t* hash_search(
     hash_sys* h, 
     const uint8_t* key, 
-    uint8_t* (*callback)(hash_sys*, uint64_t, int)
+    uint8_t* (*callback)(hash_sys*, entry* e)
 );
 #define hash_query(hash_s, key) hash_search((hash_s), (key), query_callback)
 #define hash_delete(hash_s, key) (hash_search((hash_s), (key), delete_callback) ? 0 : ELEMENT_NOT_FOUND)
 
-int (*hash_expand)(hash_sys* h);
-int hash_expand_copy(hash_sys* h);
-int hash_expand_reinsert(hash_sys* h);
+int (*hash_expand)(hash_sys** h_ptr);
+int hash_expand_copy(hash_sys** h_ptr);
+int hash_expand_reinsert(hash_sys** h_ptr);

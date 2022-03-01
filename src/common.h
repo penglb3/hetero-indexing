@@ -15,7 +15,7 @@
 #define VAL_LEN 8
 
 typedef struct{
-    uint8_t key[KEY_LEN];
+    uint8_t _Alignas(16) key[KEY_LEN];
     uint8_t value[VAL_LEN];
 } entry;
 

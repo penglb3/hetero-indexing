@@ -11,6 +11,7 @@
 #define MEMB_WIDTH (1 << 13)
 #define MEMB_DEPTH 7
 typedef struct index{
+    uint8_t has_zero_key, val_for_zero[VAL_LEN];
     sketch *cm, *memb;
     hash_sys* hash;
     art_tree* tree;
@@ -22,5 +23,6 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
 uint8_t* index_query(index_sys* index, const uint8_t* key);
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value);
 int index_delete(index_sys* index, const uint8_t* key);
+uint64_t index_size(index_sys* index);
 
 #endif // HETERO_H
