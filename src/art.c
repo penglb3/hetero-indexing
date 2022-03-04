@@ -316,7 +316,7 @@ void* art_update(const art_tree *t, const unsigned char *key, int key_len, void*
             n = (art_node*)LEAF_RAW(n);
             // Check if the expanded path matches
             if (!leaf_matches((art_leaf*)n, key, key_len, depth)) {
-                return atomic_exchange(&((art_leaf*)n)->value, value);
+                return (void*)atomic_exchange((uint64_t*)((art_leaf*)n)->value, *(uint64_t*)value);
             }
             return NULL;
         }
@@ -415,7 +415,7 @@ art_leaf* art_maximum(art_tree *t) {
 
 static art_leaf* make_leaf(const unsigned char *key, int key_len, void *value) {
     art_leaf *l = (art_leaf*)calloc(1, sizeof(art_leaf)+key_len);
-    l->value = value;
+    *(uint64_t*)l->value = *(uint64_t*)value;
     l->key_len = key_len;
     memcpy(l->key, key, key_len);
     return l;
@@ -621,7 +621,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         if (!leaf_matches(l, key, key_len, depth)) {
             *old = 1;
             void *old_val = l->value;
-            if(replace) l->value = value;
+            if(replace) *(uint64_t*)l->value = *(uint64_t*)value;
             return old_val;
         }
 

@@ -96,7 +96,7 @@ typedef struct {
  * of arbitrary size, as they include the key.
  */
 typedef struct {
-    void *value;
+    uint8_t value[VAL_LEN];
     uint32_t key_len;
     unsigned char key[];
 } art_leaf;

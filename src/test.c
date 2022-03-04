@@ -44,7 +44,7 @@ int main(int argc, char* argv[]){
         }
     }
     finish = clock() - start;
-    printf("Finished in %.3lf s. \n# of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d), size of hash table:%lux%d\n", 
+    printf("Passed in %.3lf s. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d), size of hash table:%lux%d\n", 
         (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key, index->hash->size, BIN_CAPACITY);
 
     // expansion
@@ -79,21 +79,21 @@ int main(int argc, char* argv[]){
         key = (uint64_t)&i;
         val = 2*i + 1;
         ret = index_update(index, (const uint8_t*)key, (const uint8_t*)&val);
+        val = i;
         val_ret = index_query(index, (const uint8_t*)key);
-        if(ret || val_ret==NULL || (*(uint64_t*)(val_ret)) != val){
+        if(ret || val_ret==NULL || (*(uint64_t*)(val_ret)) != 2*i+1){
             printf("!! update of key %lu failed (", i);
             printf("return code %d, ", ret);
             printf("val_ret %s", val_ret?"non null":"null");
-            if(val_ret) printf(", result %s)\n", (*(uint64_t*)(val_ret)) != i?"not equal":"equal");
+            if(val_ret) printf(", result %sequal)\n", (*(uint64_t*)(val_ret)) == 2*i+1?"not ":"");
             else printf(")\n");
             ret = 3;
             goto EXIT;
         }
     }
     finish = clock() - start;
-    printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
-    printf("# of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d)\n", 
-        index_size(index), index->hash->count, index->tree->size, index->has_zero_key);
+    printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d)\n"
+        , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key);
     // removal
     printf("Remove Test: ");
     start = clock();
