@@ -34,8 +34,13 @@ static inline uint32_t min(uint32_t a, uint32_t b){
 
 int countmin_inc(sketch* cm, const void* data, uint32_t len){
     uint32_t idx, minimal = UINT32_MAX;
+    uint64_t hash[2];
+    MurmurHash3_x64_128(data, len, cm->seeds[0], hash);
     for(int i=0; i<cm->depth; i++){
-        idx = i * cm->width + (MurmurHash3_x64_128(data, len, cm->seeds[i]) & (cm->width - 1));
+        if(!hash[0])
+            hash[0] = hash[1];
+        idx = i * cm->width + (hash[0] & 0xffff & (cm->width - 1));
+        hash[0] >>= 16;
         minimal = min(minimal, ++(cm->counts[idx]));
     }
     return minimal;
@@ -44,8 +49,13 @@ int countmin_inc(sketch* cm, const void* data, uint32_t len){
 
 int countmin_query(sketch* cm, const void* data, uint32_t len){
     uint32_t minimal = UINT32_MAX, idx;
+    uint64_t hash[2];
+    MurmurHash3_x64_128(data, len, cm->seeds[0], hash);
     for(int i=0; i<cm->depth; i++){
-        idx = i * cm->width + (MurmurHash3_x64_128(data, len, cm->seeds[i]) & (cm->width - 1));
+        if(!hash[0])
+            hash[0] = hash[1];
+        idx = i * cm->width + (hash[0] & 0xffff & (cm->width - 1));
+        hash[0] >>= 16;
         minimal = min(minimal, cm->counts[idx]);
     }
     return minimal;
@@ -57,7 +67,7 @@ void bloom_add(sketch* b, void* data, uint32_t len){
     uint32_t idx, bit;
     for(int i=0; i<b->depth; i++){
         // Calculate the hash index
-        idx = MurmurHash3_x64_128(data, len, b->seeds[i]) & (b->width - 1); 
+        idx = MurmurHash3_x64_64(data, len, b->seeds[i]) & (b->width - 1); 
         bit = idx & (sizeof(*b->counts)*8 - 1);
         idx >>= (sizeof(*b->counts) + 1);
         SET_BIT(b->counts + idx, bit);
@@ -68,7 +78,7 @@ int bloom_exists(sketch* b, void* data, uint32_t len){
     uint32_t idx, bit;
     for(int i=0; i<b->depth; i++){
         // Calculate the hash index
-        idx = MurmurHash3_x64_128(data, len, b->seeds[i]) & (b->width - 1); 
+        idx = MurmurHash3_x64_64(data, len, b->seeds[i]) & (b->width - 1); 
         bit = idx & (sizeof(*b->counts)*8 - 1);
         idx >>= (sizeof(*b->counts) + 1);
         if(TEST_BIT(b->counts[idx], bit)==0)

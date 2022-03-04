@@ -8,11 +8,11 @@ Indexing system for heterogeneous storages
 - [x] Fix value storage for ART.
 - [ ] Use Count-Min Sketch [x] to distinguish hot data.
   - [x] Insertion: As is, because kicking keys in hash table for a new one can result in jittering.
-  - [ ] Query: 
   - [x] Update: If the LRU key is less frequently used than updating key, then kick LRU key.
+  - [ ] Query: 
   - [ ] Delete: 
 - [ ] Count-Min speedup: 
-  - [ ] One hash computation for multiple lines - chop 128 bit hash value into several.
+  - [x] One hash computation for multiple lines - chop 128 bit hash value into several.
   - [ ] Sharing hash computation for hash table and Count-Min.
 - [ ] Concurrency on DRAM: Hash [x], ART [ ]
 ## Future Works

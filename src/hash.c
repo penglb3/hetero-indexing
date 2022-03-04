@@ -4,8 +4,8 @@
 
 int do_nothing(const char* format, ...){return 0;};
 
-#define HASH_IDX(hash_s, data) (MurmurHash3_x64_128((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
-#define HASH_LEVEL(hash_s, data) ((MurmurHash3_x64_128((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size)) != 0)
+#define HASH_IDX(hash_s, data) (MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
+#define HASH_LEVEL(hash_s, data) ((MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size)) != 0)
 // #define SET_BIT(ptr, i) AO_OR_F((ptr), (1<<(i)))
 // #define UNSET_BIT(ptr, i) AO_AND_F(ptr, (~(1<<(i))))
 // #define TEST_BIT(unit, i) (unit & (1<<(i)))

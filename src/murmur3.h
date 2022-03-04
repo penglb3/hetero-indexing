@@ -6,9 +6,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-// Note that this function actually returns 64 bit value now.
-uint64_t MurmurHash3_x64_128 ( const void * key, const int len,
+// returns 64 bit value.
+uint64_t MurmurHash3_x64_64 ( const void * key, const int len,
                            const uint32_t seed);
+
+void MurmurHash3_x64_128 ( const void * key, const int len,
+                           const uint32_t seed, void* out);
 #ifdef __cplusplus
 }
 #endif 
