@@ -281,6 +281,63 @@ void* art_search(const art_tree *t, const unsigned char *key, int key_len) {
                 return NULL;
             depth = depth + n->partial_len;
         }
+        #ifdef BUF_LEN
+        // TODO: Don't go down so soon yet! let's check the buffer!
+        for(int i=0; i<BUF_LEN; i++){
+            if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key)
+                return n->buffer[i].value;
+        }
+        #endif
+
+        // Recursively search
+        child = find_child(n, key[depth]);
+        n = (child) ? *child : NULL;
+        depth++;
+    }
+    return NULL;
+}
+
+/**
+ * Searches for a value in the ART tree, update it inplace and returns old value
+ * @arg t The tree
+ * @arg key The key
+ * @arg key_len The length of the key
+ * @arg value opaque value.
+ * @return NULL if the item was not found, otherwise
+ * the value pointer is returned.
+ */
+void* art_update(const art_tree *t, const unsigned char *key, int key_len, void* value) {
+    art_node **child;
+    art_node *n = t->root;
+    int prefix_len, depth = 0;
+    while (n) {
+        // Might be a leaf
+        if (IS_LEAF(n)) {
+            n = (art_node*)LEAF_RAW(n);
+            // Check if the expanded path matches
+            if (!leaf_matches((art_leaf*)n, key, key_len, depth)) {
+                return atomic_exchange(&((art_leaf*)n)->value, value);
+            }
+            return NULL;
+        }
+
+        // Bail if the prefix does not match
+        if (n->partial_len) {
+            prefix_len = check_prefix(n, key, key_len, depth);
+            if (prefix_len != min(MAX_PREFIX_LEN, n->partial_len))
+                return NULL;
+            depth = depth + n->partial_len;
+        }
+        #ifdef BUF_LEN
+        // TODO: Don't go down so soon yet! let's check the buffer!
+        for(int i=0; i<BUF_LEN; i++){
+            if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key){
+                void* old = n->buffer[i].value;
+                *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                return old;
+            }
+        }
+        #endif
 
         // Recursively search
         child = find_child(n, key[depth]);
@@ -377,6 +434,7 @@ static int longest_common_prefix(art_leaf *l1, art_leaf *l2, int depth) {
 static void copy_header(art_node *dest, art_node *src) {
     dest->num_children = src->num_children;
     dest->partial_len = src->partial_len;
+    memcpy(dest->buffer, src->buffer, sizeof(entry)*BUF_LEN);
     memcpy(dest->partial, src->partial, min(MAX_PREFIX_LEN, src->partial_len));
 }
 
@@ -547,6 +605,8 @@ static int prefix_mismatch(const art_node *n, const unsigned char *key, int key_
 }
 
 static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *key, int key_len, void *value, int depth, int *old, int replace) {
+    int storage_type = key_len & 0x7;
+    key_len &= ~0x7;
     // If we are at a NULL node, inject a leaf
     if (!n) {
         *ref = (art_node*)SET_LEAF(make_leaf(key, key_len, value));
@@ -582,13 +642,37 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         return NULL;
     }
 
+    // TODO: We want to put MEM_TYPE in buffer, so we don't have to go all the way down the tree
+    #ifdef BUF_LEN
+    if(storage_type == MEM_TYPE){
+        int z = -1;
+        for(int i=0; i<BUF_LEN; i++){
+            if(*(uint64_t*)n->buffer[i].key==0) 
+                z = i;
+            if(*(uint64_t*)n->buffer[i].key==*(uint64_t*)key){
+                void *old_val = n->buffer[i].value;
+                if(replace) *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                return old_val;
+            }
+        }
+        if(!replace && z != -1)
+            for(int i=z; i<BUF_LEN; i++){
+                if(*(uint64_t*)n->buffer[i].key==0){
+                    *(uint64_t*)n->buffer[i].key = *(uint64_t*)key;
+                    *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                    return NULL;
+                }
+            }
+    }
+    #endif
+
     // Check if given node has a prefix
     if (n->partial_len) {
         // Determine if the prefixes differ, since we need to split
         int prefix_diff = prefix_mismatch(n, key, key_len, depth);
         if ((uint32_t)prefix_diff >= n->partial_len) {
             depth += n->partial_len;
-            goto RECURSE_SEARCH;
+            goto RECURSIVE_SEARCH;
         }
 
         // Create a new node
@@ -596,6 +680,8 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         *ref = (art_node*)new_node;
         new_node->n.partial_len = prefix_diff;
         memcpy(new_node->n.partial, n->partial, min(MAX_PREFIX_LEN, prefix_diff));
+        memcpy(new_node->n.buffer, n->buffer, sizeof(entry)*BUF_LEN);
+        memset(n->buffer, 0, sizeof(entry)*BUF_LEN);
 
         // Adjust the prefix of the old node
         if (n->partial_len <= MAX_PREFIX_LEN) {
@@ -617,12 +703,12 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         return NULL;
     }
 
-RECURSE_SEARCH:;
+RECURSIVE_SEARCH:;
 
     // Find a child to recurse to
     art_node **child = find_child(n, key[depth]);
     if (child) {
-        return recursive_insert(*child, child, key, key_len, value, depth+1, old, replace);
+        return recursive_insert(*child, child, key, key_len | storage_type, value, depth+1, old, replace);
     }
 
     // No child, node goes within us
@@ -726,11 +812,19 @@ static void remove_child16(art_node16 *n, art_node **ref, art_node **l) {
     }
 }
 
-static void remove_child4(art_node4 *n, art_node **ref, art_node **l) {
+static void remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth) {
     int pos = l - n->children;
     memmove(n->keys+pos, n->keys+pos+1, n->n.num_children - 1 - pos);
     memmove(n->children+pos, n->children+pos+1, (n->n.num_children - 1 - pos)*sizeof(void*));
     n->n.num_children--;
+
+    for(int i=0; i<BUF_LEN; i++){
+        if(n->n.num_children < 4 && *(uint64_t*)n->n.buffer[i].key){
+            art_leaf *l = make_leaf(n->n.buffer[i].key, KEY_LEN, n->n.buffer[i].value);
+            add_child4(n, ref, n->n.buffer[i].key[depth], SET_LEAF(l));
+            *(uint64_t*)n->n.buffer[i].key = 0;
+        }
+    }
 
     // Remove nodes with only a single child
     if (n->n.num_children == 1) {
@@ -757,10 +851,10 @@ static void remove_child4(art_node4 *n, art_node **ref, art_node **l) {
     }
 }
 
-static void remove_child(art_node *n, art_node **ref, unsigned char c, art_node **l) {
+static void remove_child(art_node *n, art_node **ref, unsigned char c, art_node **l, int depth) {
     switch (n->type) {
         case NODE4:
-            return remove_child4((art_node4*)n, ref, l);
+            return remove_child4((art_node4*)n, ref, l, depth);
         case NODE16:
             return remove_child16((art_node16*)n, ref, l);
         case NODE48:
@@ -772,16 +866,20 @@ static void remove_child(art_node *n, art_node **ref, unsigned char c, art_node 
     }
 }
 
-static art_leaf* recursive_delete(art_node *n, art_node **ref, const unsigned char *key, int key_len, int depth) {
+static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *key, int key_len, int depth) {
     // Search terminated
     if (!n) return NULL;
+
+    void *old;
 
     // Handle hitting a leaf node
     if (IS_LEAF(n)) {
         art_leaf *l = LEAF_RAW(n);
         if (!leaf_matches(l, key, key_len, depth)) {
             *ref = NULL;
-            return l;
+            old = l->value;
+            free(l);
+            return old;
         }
         return NULL;
     }
@@ -795,6 +893,16 @@ static art_leaf* recursive_delete(art_node *n, art_node **ref, const unsigned ch
         depth = depth + n->partial_len;
     }
 
+    #ifdef BUF_LEN
+    // TODO: Don't go down so soon yet! let's check the buffer!
+    for(int i=0; i<BUF_LEN; i++){
+        if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key){
+            *(uint64_t*)n->buffer[i].key = 0;
+            return n->buffer[i].value;
+        }
+    }
+    #endif
+
     // Find child node
     art_node **child = find_child(n, key[depth]);
     if (!child) return NULL;
@@ -803,8 +911,10 @@ static art_leaf* recursive_delete(art_node *n, art_node **ref, const unsigned ch
     if (IS_LEAF(*child)) {
         art_leaf *l = LEAF_RAW(*child);
         if (!leaf_matches(l, key, key_len, depth)) {
-            remove_child(n, ref, key[depth], child);
-            return l;
+            remove_child(n, ref, key[depth], child, depth);
+            old = l->value;
+            free(l);
+            return old;
         }
         return NULL;
 
@@ -823,11 +933,9 @@ static art_leaf* recursive_delete(art_node *n, art_node **ref, const unsigned ch
  * the value pointer is returned.
  */
 void* art_delete(art_tree *t, const unsigned char *key, int key_len) {
-    art_leaf *l = recursive_delete(t->root, &t->root, key, key_len, 0);
-    if (l) {
+    void *old = recursive_delete(t->root, &t->root, key, key_len, 0);
+    if (old) {
         t->size--;
-        void *old = l->value;
-        free(l);
         return old;
     }
     return NULL;

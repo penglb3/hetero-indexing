@@ -10,12 +10,6 @@
 #define CM_WIDTH 1024
 #define MEMB_WIDTH (1 << 13)
 #define MEMB_DEPTH 7
-typedef struct index{
-    uint8_t has_zero_key, val_for_zero[VAL_LEN];
-    sketch *cm, *memb;
-    hash_sys* hash;
-    art_tree* tree;
-} index_sys;
 
 index_sys* index_construct(uint64_t hash_size, uint64_t seed);
 void index_destruct(index_sys* index);

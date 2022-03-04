@@ -28,19 +28,21 @@ void sketch_destroy(sketch* sk){
     free(sk);
 };
 
-void countmin_log(sketch* cm, void* data, uint32_t len){
-    uint32_t idx;
-    for(int i=0; i<cm->depth; i++){
-        idx = i * cm->width + (MurmurHash3_x64_128(data, len, cm->seeds[i]) & (cm->width - 1));
-        cm->counts[idx]++;
-    }
-};
-
 static inline uint32_t min(uint32_t a, uint32_t b){
     return a <= b ? a : b;
 }
 
-int countmin_query(sketch* cm, void* data, uint32_t len){
+int countmin_inc(sketch* cm, const void* data, uint32_t len){
+    uint32_t idx, minimal = UINT32_MAX;
+    for(int i=0; i<cm->depth; i++){
+        idx = i * cm->width + (MurmurHash3_x64_128(data, len, cm->seeds[i]) & (cm->width - 1));
+        minimal = min(minimal, ++(cm->counts[idx]));
+    }
+    return minimal;
+};
+
+
+int countmin_query(sketch* cm, const void* data, uint32_t len){
     uint32_t minimal = UINT32_MAX, idx;
     for(int i=0; i<cm->depth; i++){
         idx = i * cm->width + (MurmurHash3_x64_128(data, len, cm->seeds[i]) & (cm->width - 1));

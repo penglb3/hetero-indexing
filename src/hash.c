@@ -1,5 +1,6 @@
 #include "hash.h"
 #include "atomic.h"
+#include "art.h"
 
 int do_nothing(const char* format, ...){return 0;};
 
@@ -31,8 +32,13 @@ void log_stat(hash_sys* hash_s, uint64_t* count_){
         3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 
         4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8, 
     }; 
-    for(uint64_t i=0; i<hash_s->size; i++)
-        count_[table[hash_s->occupied[i]&0xff] + table[(hash_s->occupied[i]>>8)&0xff]]++;
+    for(uint64_t i=0, c=0; i<hash_s->size; i++, c=0){
+        for(int j=0; j<BIN_CAPACITY; j++)
+            if(*(uint64_t*)hash_s->entries[i].data[j].key)
+                c++;
+        count_[c]++;
+    }
+        // count_[table[hash_s->occupied[i]&0xff] + table[(hash_s->occupied[i]>>8)&0xff]]++;
 }
 
 void show_stat(hash_sys* hash_s){
@@ -49,7 +55,7 @@ void show_stat(hash_sys* hash_s){
 
 void hash_destruct(hash_sys* hash_s){
     free(hash_s->entries);
-    free(hash_s->occupied);
+    // free(hash_s->occupied);
     free(hash_s);
 }
 
@@ -68,10 +74,25 @@ hash_sys* hash_construct(uint64_t size, uint64_t seed){
     hash_s->size = size;
     hash_s->count = 0;
     hash_s->entries = calloc(size, sizeof(bin));
-    hash_s->occupied = calloc(size, sizeof(binflag_t));
-    if(!hash_s->entries || !hash_s->occupied) 
+    // hash_s->occupied = calloc(size, sizeof(binflag_t));
+    if(!hash_s->entries)// || !hash_s->occupied) 
         return NULL;
     return hash_s;
+}
+
+int hash_fresh_insert(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
+    uint64_t idx = HASH_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
+    bin* target = hash_s->entries + idx;
+    int j = 0;
+    for(j = 0; j < BIN_CAPACITY; j++){
+        if(*(uint64_t*)target->data[j].key == 0){
+            *(uint64_t*)target->data[j].key = key_i64;
+            hash_s->count++;
+            *(uint64_t*)target->data[j].value = *(uint64_t*)value;
+            return 0;
+        }
+    }
+    return HASH_BIN_FULL;
 }
 
 int hash_expand_copy(hash_sys** hash_ptr){
@@ -81,16 +102,16 @@ int hash_expand_copy(hash_sys** hash_ptr){
         log_stat(hash_s, count);
     }
     memcpy(new_entries, hash_s->entries, hash_s->size*sizeof(bin));
-    memcpy(new_entries + hash_s->size, hash_s->entries, hash_s->size*sizeof(bin));
+    // memcpy(new_entries + hash_s->size, hash_s->entries, hash_s->size*sizeof(bin));
     
     for(uint64_t i=0; i < hash_s->size; i++){
         curr = new_entries + i;
-        for(int j=0; j<BIN_CAPACITY; j++){
-            if(*(uint64_t*)curr->data[j].key != 0){
-                if(HASH_LEVEL(hash_s, curr->data[j].key))
-                    *(uint64_t*)curr->data[j].key = 0;
-                else
-                    *(uint64_t*)(curr+hash_s->size)->data[j].key = 0;
+        for(int j=0, k=0; j<BIN_CAPACITY; j++){
+            if(*(uint64_t*)curr->data[j].key && HASH_LEVEL(hash_s, curr->data[j].key)){
+                *(uint64_t*)(curr+hash_s->size)->data[k].key = *(uint64_t*)curr->data[j].key;
+                *(uint64_t*)(curr+hash_s->size)->data[k].value = *(uint64_t*)curr->data[j].value;
+                *(uint64_t*)curr->data[j].key = 0;
+                k++;
             }
         }
     }
@@ -98,9 +119,9 @@ int hash_expand_copy(hash_sys** hash_ptr){
     atomic_store(hash_ptr, new_h);
     hash_destruct(hash_s);
     if(debug != do_nothing){
-        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", hash_s->size);
-        log_stat(hash_s, count+BIN_CAPACITY+1);
-        show_stat(hash_s);
+        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", new_h->size);
+        log_stat(new_h, count+BIN_CAPACITY+1);
+        show_stat(new_h);
     }
     return 0;
 };
@@ -115,96 +136,67 @@ int hash_expand_reinsert(hash_sys** hash_ptr){
         curr = hash_s->entries + i;
         for (int j = 0; j < BIN_CAPACITY; j++){
             if (*(uint64_t *)curr->data[j].key)
-                hash_insert(new_h, curr->data[j].key, curr->data[j].value);
+                hash_fresh_insert(new_h, curr->data[j].key, curr->data[j].value);
         }
     }
     atomic_store(hash_ptr, new_h);
     hash_destruct(hash_s);
     if(debug != do_nothing){
-        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", hash_s->size);
-        log_stat(hash_s, count+BIN_CAPACITY+1);
-        show_stat(hash_s);
+        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", new_h->size);
+        log_stat(new_h, count+BIN_CAPACITY+1);
+        show_stat(new_h);
     }
     return 0;
 };
 
-int hash_modify_old(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int mode){
-    uint64_t idx = HASH_IDX(hash_s, key);
+int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mode){
+    hash_sys* hash_s = ind->hash;
+    uint64_t idx = HASH_IDX(hash_s, key), comp = 0, key_i64 = *(uint64_t*)key, key_h, key_lru;
     bin* target = hash_s->entries + idx;
-    int j = 0;
-    //check for existence
-    for(j=0; j<BIN_CAPACITY; j++) {
-        if(TEST_BIT(hash_s->occupied[idx], j) && *(uint64_t*)target->data[j].key == *(uint64_t*)key){
-            break;
-        }
-    }
-    if(mode == STRICT_UPDATE && j == BIN_CAPACITY)
-        return ELEMENT_NOT_FOUND; // In strict update, insertion is not allowed!
-    if(mode == STRICT_INSERT && j < BIN_CAPACITY)
-        return ELEMENT_ALREADY_EXISTS; // In strict insertion, inplace update is not allowed!
-    // ------------------- Update data -----------------------------------
-    if(j == BIN_CAPACITY){ // When key is not found
-        if(hash_s->occupied[idx]==FULL_FLAG) // and the bin is FULL,
-            return HASH_BIN_FULL; // Please expand or put it somewhere else.
-        // Otherwise just find a place to insert:
-        for(j=0; j<BIN_CAPACITY && TEST_BIT(hash_s->occupied[idx], j); j++);
-    }
-    // Since the space is empty, we can directly write!
-    *(uint64_t*)target->data[j].key = *(uint64_t*)key;
-    *(uint64_t*)target->data[j].value = *(uint64_t*)value;
-    // ------------------- Update metadata -------------------------------
-    // TODO: the following actions need to be [CRITICAL]
-    if(!TEST_BIT(hash_s->occupied[idx], j)){
-        SET_BIT(hash_s->occupied + idx, j);
-        hash_s->count++;
-    }
-    // TODO: [CRITICAL] ends
-    return 0;
-};
-
-uint8_t* hash_search_old(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, uint64_t, int)){
-    uint64_t key_int64 = *(uint64_t*)key, i = HASH_IDX(hash_s, key);
-    bin* target = hash_s->entries + i;
-    for(int j=0; j<BIN_CAPACITY; j++)
-        if(TEST_BIT(hash_s->occupied[i], j) && *(uint64_t*)target->data[j].key == key_int64)
-            return callback(hash_s, i, j);
-    return NULL;
-}
-
-uint8_t* query_callback_old(hash_sys* hash_s, uint64_t i, int j){
-    return hash_s->entries[i].data[j].value;
-}
-
-uint8_t* delete_callback_old(hash_sys* hash_s, uint64_t i, int j){
-    UNSET_BIT(hash_s->occupied + i, j);
-    hash_s->count--;
-    return (void*)0x1;
-}
-
-int hash_modify(hash_sys* hash_s, const uint8_t* key, const uint8_t* value, int mode){
-    uint64_t idx = HASH_IDX(hash_s, key), comp = 0, key_i64 = *(uint64_t*)key, key_h;
-    bin* target = hash_s->entries + idx;
-    int j = 0, available = -1;
-    for(j = 0; j < BIN_CAPACITY; j++){ // Try update
+    int j = 0, available = -1, min_cnt = 0//(mode & INSERT)?0:countmin_query(ind->cm, (const void*)key, KEY_LEN)
+        , i_min = -1, cnt = INT32_MAX;
+    for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
         key_h = atomic_load((uint64_t*)target->data[j].key);
-        if(key_h == key_i64){
-            if(mode == STRICT_INSERT)
+        if(key_h == key_i64){ // FOUND the key!
+            if(mode == STRICT_INSERT) // Inplace update not allowed in strict insert.
                 return ELEMENT_ALREADY_EXISTS;
+            // Inplace update and exit.
             atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
             return 0;
+        }
+        if((mode & INSERT) == 0) {
+            // cnt = countmin_query(ind->cm, (const void*)target->data[j].value, KEY_LEN);
+            if(min_cnt > cnt){
+                min_cnt = cnt;
+                i_min = j;
+                key_lru = key_h;
+            }
         }
         if(key_h == 0 && available == -1)
             available = j;
     }
-    if(mode == STRICT_UPDATE)
-        return ELEMENT_NOT_FOUND; // In strict update, insertion is not allowed!
-    if(available == -1)
+    // Reaching this point means key is not in hash table.
+    if(mode == STRICT_UPDATE) // In strict update, insertion is not allowed!
+        return ELEMENT_NOT_FOUND; 
+    if(available == -1 && i_min == -1)
         return HASH_BIN_FULL;
-    for(j = available; j < BIN_CAPACITY; j++){
-        comp = 0;
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, key_i64)){
-            atomic_fetch_add(& hash_s->count, 1);
-            atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+    // If there is a empty slot, then try insert. 
+    if(available != -1)
+        for(j = available; j < BIN_CAPACITY; j++){
+            comp = 0;
+            if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, key_i64)){
+                atomic_fetch_add(& hash_s->count, 1);
+                atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+                return 0;
+            }
+        }
+    else if(i_min != -1){ // No empty slot, but we do have an key_lru (that means we are to UPDATE)
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, &key_lru, key_i64)){
+            comp = atomic_exchange((uint64_t*)target->data[i_min].value, *(uint64_t*)value);
+            // Since we have key in the system, but not in hash table, then it must be in ART
+            art_delete(ind->tree, key, KEY_LEN);
+            // Now put key_lru in ART.
+            art_insert_no_replace(ind->tree, (void*)&key_lru, MEM_TYPE, (void*)&comp);
             return 0;
         }
     }
@@ -230,3 +222,4 @@ uint8_t* delete_callback(hash_sys *h, entry* e){
     atomic_fetch_sub(& h->count, 1);
     return (void*)0x1;
 }
+

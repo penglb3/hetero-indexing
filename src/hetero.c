@@ -24,14 +24,15 @@ void index_destruct(index_sys* index){
 
 int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int storage_type){
     int status;
+    if(*(uint64_t*)key==433412)
+        debug("433412, fuck!\n");
     if(*(uint64_t*)key == 0){
         atomic_store(& index->has_zero_key, 1);
         atomic_store((uint64_t*)index->val_for_zero, *(uint64_t*)value);
         return 0;
     }
     if(storage_type == MEM_TYPE){
-    REINSERT:
-        status = hash_modify(index->hash, key, value, INSERT);
+        status = hash_insert(index, key, value);
         if(status == 0){
             return 0;
         }
@@ -40,11 +41,10 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
         //     goto REINSERT;
         // }
     }
-    return art_insert_no_replace(index->tree, key, KEY_LEN, (void*)value)!=NULL;
+    return art_insert_no_replace(index->tree, key, storage_type | KEY_LEN, (void*)value) != NULL;
 }
 
 uint8_t* index_query(index_sys* index, const uint8_t* key){
-    countmin_log(index->cm, (void*)key, KEY_LEN);
     if(*(uint64_t*)key == 0){
         if(atomic_load(& index->has_zero_key)){
             return index->val_for_zero;
@@ -52,6 +52,7 @@ uint8_t* index_query(index_sys* index, const uint8_t* key){
         else
             return NULL;
     }
+    int cnt = countmin_inc(index->cm, (const void*)key, KEY_LEN);
     uint8_t* result = hash_query(index->hash, key);
     if(result) 
         return result;
@@ -64,9 +65,10 @@ int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
         atomic_store((uint64_t*)index->val_for_zero, *(uint64_t*)value);
         return 0;
     }
-    int status = hash_update(index->hash, key, value);
+    countmin_inc(index->cm, (const void*)key, KEY_LEN);
+    int status = hash_update(index, key, value);
     if(status == ELEMENT_NOT_FOUND){
-        return art_insert(index->tree, key, KEY_LEN, (void*)value) == NULL;
+        return art_update(index->tree, key, KEY_LEN, (void*)value) == NULL;
     }
     return 0;
 }

@@ -1,25 +1,12 @@
+#ifndef HASH_H
+#define HASH_H
 #include "common.h"
 #include "murmur3.h"
+#include "data_sketch.h"
 
 // --------------Hash System-----------------
 int do_nothing(const char* format, ...);
 int (*debug)(const char*, ...);
-
-typedef uint8_t binflag_t;
-#define BIN_CAPACITY 8
-#define FULL_FLAG (1<<BIN_CAPACITY) - 1
-
-typedef struct entry_bin{
-    entry data[BIN_CAPACITY];
-} bin;
-
-typedef struct hash_metadata{
-    uint64_t seed;
-    uint64_t size;
-    uint64_t count;
-    binflag_t* occupied;
-    bin* entries;
-} hash_sys;
 
 /**
 * Construct a hash system
@@ -54,7 +41,7 @@ void hash_destruct(hash_sys* h);
                  while the non-strict one does.)
 * @return a int indicating the outcome.
 */
-int hash_modify(hash_sys* h, const uint8_t* key, const uint8_t* value, int mode);
+int hash_modify(index_sys* h, const uint8_t* key, const uint8_t* value, int mode);
 #define hash_insert(h, k, v) hash_modify((h), (k), (v), INSERT)
 #define hash_update(h, k, v) hash_modify((h), (k), (v), STRICT_UPDATE)
 
@@ -86,3 +73,5 @@ uint8_t* hash_search(
 int (*hash_expand)(hash_sys** h_ptr);
 int hash_expand_copy(hash_sys** h_ptr);
 int hash_expand_reinsert(hash_sys** h_ptr);
+
+#endif // HASH_H

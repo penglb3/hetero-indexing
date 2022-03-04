@@ -1,17 +1,11 @@
 #include <stdint.h>
+#include "common.h"
 #ifndef ART_H
 #define ART_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define NODE4   1
-#define NODE16  2
-#define NODE48  3
-#define NODE256 4
-
-#define MAX_PREFIX_LEN 10
 
 #if defined(__GNUC__) && !defined(__clang__)
 # if __STDC_VERSION__ >= 199901L && 402 == (__GNUC__ * 100 + __GNUC_MINOR__)
@@ -26,70 +20,6 @@ extern "C" {
 
 typedef int(*art_callback)(void *data, const unsigned char *key, uint32_t key_len, void *value);
 
-/**
- * This struct is included as part
- * of all the various node sizes
- */
-typedef struct {
-    uint32_t partial_len;
-    uint8_t type;
-    uint8_t num_children;
-    unsigned char partial[MAX_PREFIX_LEN];
-} art_node;
-
-/**
- * Small node with only 4 children
- */
-typedef struct {
-    art_node n;
-    unsigned char keys[4];
-    art_node *children[4];
-} art_node4;
-
-/**
- * Node with 16 children
- */
-typedef struct {
-    art_node n;
-    unsigned char keys[16];
-    art_node *children[16];
-} art_node16;
-
-/**
- * Node with 48 children, but
- * a full 256 byte field.
- */
-typedef struct {
-    art_node n;
-    unsigned char keys[256];
-    art_node *children[48];
-} art_node48;
-
-/**
- * Full node with 256 children
- */
-typedef struct {
-    art_node n;
-    art_node *children[256];
-} art_node256;
-
-/**
- * Represents a leaf. These are
- * of arbitrary size, as they include the key.
- */
-typedef struct {
-    void *value;
-    uint32_t key_len;
-    unsigned char key[];
-} art_leaf;
-
-/**
- * Main struct, points to root.
- */
-typedef struct {
-    art_node *root;
-    uint64_t size;
-} art_tree;
 
 /**
  * Initializes an ART tree
@@ -149,6 +79,17 @@ void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value
  * the old value pointer is returned.
  */
 void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, void *value);
+
+/**
+ * Searches for a value in the ART tree, update it inplace and returns old value
+ * @arg t The tree
+ * @arg key The key
+ * @arg key_len The length of the key
+ * @arg value opaque value.
+ * @return NULL if the item was not found, otherwise
+ * the value pointer is returned.
+ */
+void* art_update(const art_tree *t, const unsigned char *key, int key_len, void* value);
 
 /**
  * Deletes a value from the ART tree

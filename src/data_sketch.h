@@ -24,8 +24,8 @@ void sketch_destroy(sketch* cm);
 #define countmin_destroy sketch_destroy
 #define bloom_destroy sketch_destroy
 
-void countmin_log(sketch* cm, void* data, uint32_t len);
-int countmin_query(sketch* cm, void* data, uint32_t len);
+int countmin_inc(sketch* cm, const void* data, uint32_t len);
+int countmin_query(sketch* cm, const void* data, uint32_t len);
 
 void bloom_add(sketch* b, void* data, uint32_t len);
 int bloom_exists(sketch* b, void* data, uint32_t len);

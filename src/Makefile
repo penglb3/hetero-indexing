@@ -9,17 +9,17 @@ all: $(EXEC)
 $(EXEC): test.o hetero.o murmur3.o art.o data_sketch.o hash.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-test.o: test.c hetero.h
+test.o: test.c hetero.h hash.h atomic.h art.h data_sketch.h murmur3.h
 	$(CC) $(CFLAGS) -o $@ -c $<
-hetero.o: hetero.c hetero.h atomic.h art.h data_sketch.h
+hetero.o: hetero.c hetero.h hash.h atomic.h art.h data_sketch.h murmur3.h
 	$(CC) $(CFLAGS) -o $@ -c $<
 art.o: art.c art.h common.h
 	$(CC) $(CFLAGS) -o $@ -c $<
-hash.o: hash.c hash.h murmur3.h common.h
+hash.o: hash.c hash.h murmur3.h common.h atomic.h
 	$(CC) $(CFLAGS) -o $@ -c $<
 murmur3.o: murmur3.c murmur3.h
 	$(CC) $(CFLAGS) -o $@ -c $<
-data_sketch.o: data_sketch.c data_sketch.h murmur3.h
+data_sketch.o: data_sketch.c data_sketch.h murmur3.h atomic.h
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 # Data sketching scheme testing program, has nothing to do with the main program
