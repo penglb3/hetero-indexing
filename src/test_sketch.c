@@ -4,7 +4,7 @@
 #define LEN 10
 
 int main(){
-    sketch* bloom = bloom_init(128, 4), *cm = countmin_init(8, 4);
+    sketch* bloom = bloom_init(128, 4, 0), *cm = countmin_init(8, 4, 0);
     if(!cm || !bloom)
         return -1;
     int op = 1, res;
@@ -31,7 +31,7 @@ int main(){
             printf("Bloom filter: I have %s seen this.\n", res?"probably":"never");
             break;
         case 3:
-            countmin_log(cm, str, LEN);
+            countmin_inc(cm, str, LEN);
             printf("Count-Min Counts:\n");
             for(int i=0; i<cm->depth; i++){
                 for(int j=0; j<cm->width; j++)

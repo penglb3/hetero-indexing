@@ -4,41 +4,19 @@
 
 int do_nothing(const char* format, ...){return 0;};
 
-#define HASH_IDX(hash_s, data) (MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
+#define HASH_IDX(h, data) (h[0] & ((hash_s)->size - 1))
+#define HASH_COMP_IDX(hash_s, data) (MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
 #define HASH_LEVEL(hash_s, data) ((MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size)) != 0)
-// #define SET_BIT(ptr, i) AO_OR_F((ptr), (1<<(i)))
-// #define UNSET_BIT(ptr, i) AO_AND_F(ptr, (~(1<<(i))))
-// #define TEST_BIT(unit, i) (unit & (1<<(i)))
 
 uint64_t count[BIN_CAPACITY*2+2] = {0};
 
 void log_stat(hash_sys* hash_s, uint64_t* count_){
-    unsigned int table[256] = 
-    { 
-        0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 
-        1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 
-        1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 
-        2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 
-        1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 
-        2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 
-        2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 
-        3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 
-        1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 
-        2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 
-        2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 
-        3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 
-        2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 
-        3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 
-        3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 
-        4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8, 
-    }; 
     for(uint64_t i=0, c=0; i<hash_s->size; i++, c=0){
         for(int j=0; j<BIN_CAPACITY; j++)
             if(*(uint64_t*)hash_s->entries[i].data[j].key)
                 c++;
         count_[c]++;
     }
-        // count_[table[hash_s->occupied[i]&0xff] + table[(hash_s->occupied[i]>>8)&0xff]]++;
 }
 
 void show_stat(hash_sys* hash_s){
@@ -55,18 +33,17 @@ void show_stat(hash_sys* hash_s){
 
 void hash_destruct(hash_sys* hash_s){
     free(hash_s->entries);
-    // free(hash_s->occupied);
     free(hash_s);
 }
 
-hash_sys* hash_construct(uint64_t size, uint64_t seed){
+hash_sys* hash_construct(uint64_t size, uint32_t seed){
     // allocate space for metadata structure
     hash_sys* hash_s = malloc(sizeof(hash_sys));
     if(!hash_s) 
         return NULL;
     if(seed==0){// generate seeds
         srand(time(NULL));
-        hash_s->seed = ((uint64_t)rand()<<32) | rand();
+        hash_s->seed = rand();
     }
     else 
         hash_s->seed = seed;
@@ -74,14 +51,13 @@ hash_sys* hash_construct(uint64_t size, uint64_t seed){
     hash_s->size = size;
     hash_s->count = 0;
     hash_s->entries = calloc(size, sizeof(bin));
-    // hash_s->occupied = calloc(size, sizeof(binflag_t));
-    if(!hash_s->entries)// || !hash_s->occupied) 
+    if(!hash_s->entries)
         return NULL;
     return hash_s;
 }
 
 int hash_fresh_insert(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
-    uint64_t idx = HASH_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
+    uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
     bin* target = hash_s->entries + idx;
     int j = 0;
     for(j = 0; j < BIN_CAPACITY; j++){
@@ -151,10 +127,11 @@ int hash_expand_reinsert(hash_sys** hash_ptr){
 
 int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mode){
     hash_sys* hash_s = ind->hash;
-    uint64_t idx = HASH_IDX(hash_s, key), comp = 0, key_i64 = *(uint64_t*)key, key_h, key_lru;
-    bin* target = hash_s->entries + idx;
-    int j = 0, available = -1, min_cnt = 0//(mode & INSERT)?0:countmin_query(ind->cm, (const void*)key, KEY_LEN)
-        , i_min = -1, cnt = INT32_MAX;
+    uint64_t h[2], comp = 0, key_i64 = *(uint64_t*)key, key_h, key_lru;
+    MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
+    bin* target = hash_s->entries + HASH_IDX(h, key);
+    int j = 0, available = -1, i_min = -1, cnt = INT32_MAX, 
+        min_cnt = (mode & INSERT) ? 0 : countmin_query_explicit(ind->cm, (const void *)key, KEY_LEN, h);
     for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
         key_h = atomic_load((uint64_t*)target->data[j].key);
         if(key_h == key_i64){ // FOUND the key!
@@ -164,23 +141,23 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
             atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
             return 0;
         }
-        if((mode & INSERT) == 0) {
-            // cnt = countmin_query(ind->cm, (const void*)target->data[j].value, KEY_LEN);
+        if(key_h == 0 && available == -1)
+            available = j;
+        if(min_cnt && available == -1) {
+            cnt = countmin_query(ind->cm, (const void*)target->data[j].value, KEY_LEN);
             if(min_cnt > cnt){
                 min_cnt = cnt;
                 i_min = j;
                 key_lru = key_h;
             }
         }
-        if(key_h == 0 && available == -1)
-            available = j;
     }
     // Reaching this point means key is not in hash table.
     if(mode == STRICT_UPDATE) // In strict update, insertion is not allowed!
         return ELEMENT_NOT_FOUND; 
     if(available == -1 && i_min == -1)
         return HASH_BIN_FULL;
-    // If there is a empty slot, then try insert. 
+    // If there is an empty slot, then try insert. 
     if(available != -1)
         for(j = available; j < BIN_CAPACITY; j++){
             comp = 0;
@@ -193,7 +170,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
     else if(i_min != -1){ // No empty slot, but we do have an key_lru (that means we are to UPDATE)
         if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, &key_lru, key_i64)){
             comp = atomic_exchange((uint64_t*)target->data[i_min].value, *(uint64_t*)value);
-            // Since we have key in the system, but not in hash table, then it must be in ART
+            // Since we have the key in the system, but not in hash table, then it must be in ART
             art_delete(ind->tree, key, KEY_LEN);
             // Now put key_lru in ART.
             art_insert_no_replace(ind->tree, (void*)&key_lru, MEM_TYPE, (void*)&comp);
@@ -204,7 +181,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
 }
 
 uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, entry*)){
-    uint64_t key_i64 = *(uint64_t*)key, i = HASH_IDX(hash_s, key);
+    uint64_t key_i64 = *(uint64_t*)key, i = HASH_COMP_IDX(hash_s, key);
     bin* target = hash_s->entries + i;
     for(int j=0; j<BIN_CAPACITY; j++){
         if(atomic_load((uint64_t*)target->data[j].key) == key_i64)

@@ -26,7 +26,7 @@ typedef struct entry_bin{
 } bin;
 
 typedef struct hash_metadata{
-    uint64_t seed;
+    uint32_t seed;
     uint64_t size;
     uint64_t count;
     bin* entries;

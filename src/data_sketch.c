@@ -1,30 +1,39 @@
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include "murmur3.h"
+#include "atomic.h"
 #include "data_sketch.h"
 
-sketch* sketch_init(uint32_t width, uint32_t depth, int mode){
+sketch* sketch_init(uint32_t width, uint32_t depth, uint32_t seed, int mode){
     sketch* sk = calloc(1, sizeof(sketch));
     if(!sk || (width & (width-1))) // ENFORCES that width is a power of 2
         return NULL;
     sk->width = width;
     sk->depth = depth;
-    if(mode == BLOOM_FILTER && width >= sizeof(*sk->counts)*8 )
+    if(mode == BLOOM_FILTER && width >= sizeof(*sk->counts)*8 ){
         sk->counts = calloc(width / (sizeof(uint32_t)*8), sizeof(uint32_t));
-    else if(mode == COUNT_MIN)
+    }
+    else if(mode == COUNT_MIN){
         sk->counts = calloc(depth * width, sizeof(uint32_t));
+        sk->shift = __builtin_ctz(sk->width);
+        if(sk->shift * sk->depth > 128)
+            return NULL;
+    }
     else 
         return NULL;
-    sk->seeds = malloc(depth * sizeof(uint32_t));
-    if(!sk->counts || !sk->seeds)
+    if(!sk->counts)
         return NULL;
-    srand(time(NULL));
-    for(int i=0; i<depth; i++){
-        sk->seeds[i] = rand();
+    if(!seed){
+        srand(time(NULL));
+        sk->seed = rand();
     }
     return sk;
 };
 
 void sketch_destroy(sketch* sk){
     free(sk->counts);
-    free(sk->seeds);
     free(sk);
 };
 
@@ -32,31 +41,53 @@ static inline uint32_t min(uint32_t a, uint32_t b){
     return a <= b ? a : b;
 }
 
-int countmin_inc(sketch* cm, const void* data, uint32_t len){
-    uint32_t idx, minimal = UINT32_MAX;
+int countmin_inc_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
+    uint32_t idx, minimal = UINT32_MAX, tot_shift = 0;
     uint64_t hash[2];
-    MurmurHash3_x64_128(data, len, cm->seeds[0], hash);
+    if(!ext_hash)
+        MurmurHash3_x64_128(data, len, cm->seed, hash);
+    else 
+        hash[0] = ((uint64_t*)ext_hash)[0], hash[1] = ((uint64_t*)ext_hash)[1];
     for(int i=0; i<cm->depth; i++){
-        if(!hash[0])
-            hash[0] = hash[1];
-        idx = i * cm->width + (hash[0] & 0xffff & (cm->width - 1));
-        hash[0] >>= 16;
-        minimal = min(minimal, ++(cm->counts[idx]));
+        idx = i * cm->width + (hash[0] & (cm->width - 1));
+        cm->counts[idx]++;
+        minimal = min(minimal, cm->counts[idx]);
+        tot_shift += cm->shift;
+        if(tot_shift >= 64){
+            tot_shift -= 64;
+            if(tot_shift == 0)
+                hash[0] = hash[1];
+            else{
+                hash[0] |= (hash[1] << (cm->shift - tot_shift));
+                hash[1] >>= (64 - tot_shift);
+            }
+        }
+        hash[0] >>= cm->shift;
     }
     return minimal;
 };
 
-
-int countmin_query(sketch* cm, const void* data, uint32_t len){
-    uint32_t minimal = UINT32_MAX, idx;
+int countmin_query_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
+    uint32_t minimal = UINT32_MAX, idx, tot_shift = 0;
     uint64_t hash[2];
-    MurmurHash3_x64_128(data, len, cm->seeds[0], hash);
+    if(!ext_hash)
+        MurmurHash3_x64_128(data, len, cm->seed, hash);
+    else 
+        hash[0] = ((uint64_t*)ext_hash)[0], hash[1] = ((uint64_t*)ext_hash)[1];
     for(int i=0; i<cm->depth; i++){
-        if(!hash[0])
-            hash[0] = hash[1];
-        idx = i * cm->width + (hash[0] & 0xffff & (cm->width - 1));
-        hash[0] >>= 16;
+        idx = i * cm->width + (hash[0] & (cm->width - 1));
         minimal = min(minimal, cm->counts[idx]);
+        tot_shift += cm->shift;
+        if(tot_shift >= 64){
+            tot_shift -= 64;
+            if(tot_shift == 0)
+                hash[0] = hash[1];
+            else{
+                hash[0] |= (hash[1] << (cm->shift - tot_shift));
+                hash[1] >>= (64 - tot_shift);
+            }
+        }
+        hash[0] >>= cm->shift;
     }
     return minimal;
 };
@@ -65,9 +96,11 @@ int countmin_query(sketch* cm, const void* data, uint32_t len){
 
 void bloom_add(sketch* b, void* data, uint32_t len){
     uint32_t idx, bit;
+    uint64_t hash[2];
+    MurmurHash3_x64_128(data, len, b->seed, hash);
     for(int i=0; i<b->depth; i++){
         // Calculate the hash index
-        idx = MurmurHash3_x64_64(data, len, b->seeds[i]) & (b->width - 1); 
+        idx = MurmurHash3_x64_64(data, len, b->seed) & (b->width - 1); 
         bit = idx & (sizeof(*b->counts)*8 - 1);
         idx >>= (sizeof(*b->counts) + 1);
         SET_BIT(b->counts + idx, bit);
@@ -78,7 +111,7 @@ int bloom_exists(sketch* b, void* data, uint32_t len){
     uint32_t idx, bit;
     for(int i=0; i<b->depth; i++){
         // Calculate the hash index
-        idx = MurmurHash3_x64_64(data, len, b->seeds[i]) & (b->width - 1); 
+        idx = MurmurHash3_x64_64(data, len, b->seed) & (b->width - 1); 
         bit = idx & (sizeof(*b->counts)*8 - 1);
         idx >>= (sizeof(*b->counts) + 1);
         if(TEST_BIT(b->counts[idx], bit)==0)

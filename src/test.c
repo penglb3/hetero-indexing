@@ -5,14 +5,15 @@
 
 // toy example
 int main(int argc, char* argv[]){
-    uint64_t size = 1<<17, num_entries = 2000000, seed = 0;
+    uint64_t size = 1<<17, num_entries = 2000000;
+    uint32_t seed = 0;
+    int ret;
     double load_factor = -1;
     debug = do_nothing;
     hash_expand = hash_expand_copy;
-    int ret;
     while((ret = getopt(argc, argv, "s:n:di:rf:"))!=-1)
         switch(ret){
-            case 'i': seed = atoll(optarg); break;
+            case 'i': seed = atoi(optarg); break;
             case 's': size = 1<<atoi(optarg);break;
             case 'n': num_entries = atoll(optarg);break;
             case 'd': debug = printf;break;
@@ -25,7 +26,7 @@ int main(int argc, char* argv[]){
         printf("init failed: %d\n",ret);
         return -1;
     }
-    printf("Initial size = %lux%d, # of samples = %lu, seed: %lu\n", index->hash->size, BIN_CAPACITY, num_entries, index->hash->seed);
+    printf("Initial size = %lux%d, # of samples = %lu, seed: %u\n", index->hash->size, BIN_CAPACITY, num_entries, index->hash->seed);
     uint64_t key, val;
     uint8_t* val_ret;
 

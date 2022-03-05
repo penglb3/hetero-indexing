@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include "art.h"
-
+#include "atomic.h"
 #ifdef __i386__
     #include <emmintrin.h>
 #else

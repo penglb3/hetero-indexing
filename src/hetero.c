@@ -1,5 +1,5 @@
 #include "hetero.h"
-
+#include "atomic.h"
 // -------------- INDEX SYS --------------
 
 index_sys* index_construct(uint64_t hash_size, uint64_t seed){
@@ -8,10 +8,12 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
         return NULL;
     index->hash = hash_construct(hash_size, seed);
     index->tree = calloc(1, sizeof(art_tree));
-    index->cm = countmin_init(CM_WIDTH, CM_DEPTH);
-    if(!index->hash || !index->tree || !index->cm) 
+    if(!index->hash || !index->tree) 
         return NULL;
-    return art_tree_init(index->tree)? NULL : index;
+    index->cm = countmin_init(CM_WIDTH, CM_DEPTH, index->hash->seed);
+    if(!index->cm)
+        return NULL;
+    return art_tree_init(index->tree) ? NULL : index;
 }
 
 void index_destruct(index_sys* index){

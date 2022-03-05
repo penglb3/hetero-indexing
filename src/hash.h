@@ -15,7 +15,7 @@ int (*debug)(const char*, ...);
 *               0 for random init, while non-zero value will be used for new hash_sys.
 * @return a pointer pointing to the constructed index system.
 */
-hash_sys* hash_construct(uint64_t size, uint64_t seed);
+hash_sys* hash_construct(uint64_t size, uint32_t seed);
 
 /**
 * Destruct a hash system

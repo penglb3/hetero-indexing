@@ -6,7 +6,7 @@
 #include "data_sketch.h"
 
 // --------------Index System-----------------
-#define CM_DEPTH 8
+#define CM_DEPTH 6
 #define CM_WIDTH 1024
 #define MEMB_WIDTH (1 << 13)
 #define MEMB_DEPTH 7
