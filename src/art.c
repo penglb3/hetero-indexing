@@ -434,7 +434,9 @@ static int longest_common_prefix(art_leaf *l1, art_leaf *l2, int depth) {
 static void copy_header(art_node *dest, art_node *src) {
     dest->num_children = src->num_children;
     dest->partial_len = src->partial_len;
+    #ifdef BUF_LEN
     memcpy(dest->buffer, src->buffer, sizeof(entry)*BUF_LEN);
+    #endif
     memcpy(dest->partial, src->partial, min(MAX_PREFIX_LEN, src->partial_len));
 }
 
@@ -680,7 +682,9 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         *ref = (art_node*)new_node;
         new_node->n.partial_len = prefix_diff;
         memcpy(new_node->n.partial, n->partial, min(MAX_PREFIX_LEN, prefix_diff));
+        #ifdef BUF_LEN
         memcpy(new_node->n.buffer, n->buffer, sizeof(entry)*BUF_LEN);
+        #endif
         memset(n->buffer, 0, sizeof(entry)*BUF_LEN);
 
         // Adjust the prefix of the old node
@@ -817,7 +821,7 @@ static void remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth)
     memmove(n->keys+pos, n->keys+pos+1, n->n.num_children - 1 - pos);
     memmove(n->children+pos, n->children+pos+1, (n->n.num_children - 1 - pos)*sizeof(void*));
     n->n.num_children--;
-
+    #ifdef BUF_LEN
     for(int i=0; i<BUF_LEN; i++){
         if(n->n.num_children < 4 && *(uint64_t*)n->n.buffer[i].key){
             art_leaf *l = make_leaf(n->n.buffer[i].key, KEY_LEN, n->n.buffer[i].value);
@@ -825,7 +829,7 @@ static void remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth)
             *(uint64_t*)n->n.buffer[i].key = 0;
         }
     }
-
+    #endif
     // Remove nodes with only a single child
     if (n->n.num_children == 1) {
         art_node *child = n->children[0];
