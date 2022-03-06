@@ -4,13 +4,13 @@
 
 int do_nothing(const char* format, ...){return 0;};
 
-#define HASH_IDX(h, data) (h[0] & ((hash_s)->size - 1))
+#define HASH_IDX(hash_s, h) (h[0] & ((hash_s)->size - 1))
 #define HASH_COMP_IDX(hash_s, data) (MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
 #define HASH_LEVEL(hash_s, data) ((MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size)) != 0)
 
 uint64_t count[BIN_CAPACITY*2+2] = {0};
 
-void log_stat(hash_sys* hash_s, uint64_t* count_){
+static void log_stat(hash_sys* hash_s, uint64_t* count_){
     for(uint64_t i=0, c=0; i<hash_s->size; i++, c=0){
         for(int j=0; j<BIN_CAPACITY; j++)
             if(*(uint64_t*)hash_s->entries[i].data[j].key)
@@ -19,7 +19,7 @@ void log_stat(hash_sys* hash_s, uint64_t* count_){
     }
 }
 
-void show_stat(hash_sys* hash_s){
+static void show_stat(hash_sys* hash_s){
     uint64_t sum = hash_s->size >> 1;
     debug("Load factor (before expand): %.3lf%\n", (double)(hash_s->count) / (hash_s->size * BIN_CAPACITY) * 200 );
     debug("BIN#\t: COUNT\n");
@@ -34,6 +34,21 @@ void show_stat(hash_sys* hash_s){
 void hash_destruct(hash_sys* hash_s){
     free(hash_s->entries);
     free(hash_s);
+}
+
+static int hash_insert_nocheck_nosafe(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
+    uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
+    bin* target = hash_s->entries + idx;
+    int j = 0;
+    for(j = 0; j < BIN_CAPACITY; j++){
+        if(*(uint64_t*)target->data[j].key == 0){
+            *(uint64_t*)target->data[j].key = key_i64;
+            hash_s->count++;
+            *(uint64_t*)target->data[j].value = *(uint64_t*)value;
+            return 0;
+        }
+    }
+    return HASH_BIN_FULL;
 }
 
 hash_sys* hash_construct(uint64_t size, uint32_t seed){
@@ -54,21 +69,6 @@ hash_sys* hash_construct(uint64_t size, uint32_t seed){
     if(!hash_s->entries)
         return NULL;
     return hash_s;
-}
-
-static int hash_insert_nocheck_nosafe(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
-    uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
-    bin* target = hash_s->entries + idx;
-    int j = 0;
-    for(j = 0; j < BIN_CAPACITY; j++){
-        if(*(uint64_t*)target->data[j].key == 0){
-            *(uint64_t*)target->data[j].key = key_i64;
-            hash_s->count++;
-            *(uint64_t*)target->data[j].value = *(uint64_t*)value;
-            return 0;
-        }
-    }
-    return HASH_BIN_FULL;
 }
 
 int hash_expand_copy(hash_sys** hash_ptr){
@@ -129,9 +129,9 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
     hash_sys* hash_s = ind->hash;
     uint64_t h[2], comp = 0, key_i64 = *(uint64_t*)key, key_h, key_lru;
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
-    bin* target = hash_s->entries + HASH_IDX(h, key);
+    bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     int j = 0, available = -1, i_min = -1, cnt = INT32_MAX, 
-        min_cnt = (mode & INSERT) ? 0 : countmin_query_explicit(ind->cm, (const void *)key, KEY_LEN, h);
+        min_cnt = (mode & INSERT) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
     for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
         key_h = atomic_load((uint64_t*)target->data[j].key);
         if(key_h == key_i64){ // FOUND the key!
@@ -195,9 +195,13 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
     return HASH_BIN_FULL;
 }
 
-const uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, const uint8_t* (*callback)(hash_sys*, entry*)){
-    uint64_t key_i64 = *(uint64_t*)key, i = HASH_COMP_IDX(hash_s, key);
-    bin* target = hash_s->entries + i;
+const uint8_t* hash_search(index_sys* ind, const uint8_t* key, const uint8_t* (*callback)(hash_sys*, entry*)){
+    hash_sys* hash_s = ind->hash;
+    uint64_t key_i64 = *(uint64_t*)key, h[2];
+    MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
+    if(callback == query_callback)
+        countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
+    bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     for(int j=0; j<BIN_CAPACITY; j++){
         if(atomic_load((uint64_t*)target->data[j].key) == key_i64)
             return callback(hash_s, target->data + j);

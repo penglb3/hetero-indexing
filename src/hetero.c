@@ -58,8 +58,7 @@ const uint8_t* index_query(index_sys* index, const uint8_t* key){
         else
             return NULL;
     }
-    int cnt = countmin_inc(index->cm, (const void*)key, KEY_LEN);
-    const uint8_t* error = hash_query(index->hash, key);
+    const uint8_t* error = hash_query(index, key);
     if(error) 
         return error;
     return art_search(index->tree, key, KEY_LEN);
@@ -84,7 +83,7 @@ int index_delete(index_sys* index, const uint8_t* key){
         uint8_t s = 1;
         return !atomic_compare_exchange_strong(& index->has_zero_key, &s, 0);
     }
-    int status = hash_delete(index->hash, key);
+    int status = hash_delete(index, key);
     if(status){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }

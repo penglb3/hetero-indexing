@@ -13,6 +13,8 @@
 #endif
 #endif
 
+// Code adapted from https://github.com/armon/libart
+
 /**
  * Macros to manipulate pointer tags
  */
@@ -254,9 +256,9 @@ static int leaf_matches(const art_leaf *n, const unsigned char *key, int key_len
 
 /**
  * Searches for a value in the ART tree
- * @arg t The tree
- * @arg key The key
- * @arg key_len The length of the key
+ * @param t The tree
+ * @param key The key
+ * @param key_len The length of the key
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
@@ -300,10 +302,10 @@ void* art_search(const art_tree *t, const unsigned char *key, int key_len) {
 
 /**
  * Searches for a value in the ART tree, update it inplace and returns old value
- * @arg t The tree
- * @arg key The key
- * @arg key_len The length of the key
- * @arg value opaque value.
+ * @param t The tree
+ * @param key The key
+ * @param key_len The length of the key
+ * @param value opaque value.
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
@@ -726,10 +728,10 @@ RECURSIVE_SEARCH:;
 
 /**
  * inserts a new value into the art tree
- * @arg t the tree
- * @arg key the key
- * @arg key_len the length of the key
- * @arg value opaque value.
+ * @param t the tree
+ * @param key the key
+ * @param key_len the length of the key
+ * @param value opaque value.
  * @return null if the item was newly inserted, otherwise
  * the old value pointer is returned.
  */
@@ -746,10 +748,10 @@ void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value
 
 /**
  * inserts a new value into the art tree (no replace)
- * @arg t the tree
- * @arg key the key
- * @arg key_len the length of the key
- * @arg value opaque value.
+ * @param t the tree
+ * @param key the key
+ * @param key_len the length of the key
+ * @param value opaque value.
  * @return null if the item was newly inserted, otherwise
  * the old value pointer is returned.
  */
@@ -946,9 +948,9 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
 
 /**
  * Deletes a value from the ART tree
- * @arg t The tree
- * @arg key The key
- * @arg key_len The length of the key
+ * @param t The tree
+ * @param key The key
+ * @param key_len The length of the key
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
@@ -1019,9 +1021,9 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
  * invoking a callback for each. The call back gets a
  * key, value for each and returns an integer stop value.
  * If the callback returns non-zero, then the iteration stops.
- * @arg t The tree to iterate over
- * @arg cb The callback function to invoke
- * @arg data Opaque handle passed to the callback
+ * @param t The tree to iterate over
+ * @param cb The callback function to invoke
+ * @param data Opaque handle passed to the callback
  * @return 0 on success, or the return of the callback.
  */
 int art_iter(art_tree *t, art_callback cb, void *data) {
@@ -1045,11 +1047,11 @@ static int leaf_prefix_matches(const art_leaf *n, const unsigned char *prefix, i
  * invoking a callback for each that matches a given prefix.
  * The call back gets a key, value for each and returns an integer stop value.
  * If the callback returns non-zero, then the iteration stops.
- * @arg t The tree to iterate over
- * @arg prefix The prefix of keys to read
- * @arg prefix_len The length of the prefix
- * @arg cb The callback function to invoke
- * @arg data Opaque handle passed to the callback
+ * @param t The tree to iterate over
+ * @param prefix The prefix of keys to read
+ * @param prefix_len The length of the prefix
+ * @param cb The callback function to invoke
+ * @param data Opaque handle passed to the callback
  * @return 0 on success, or the return of the callback.
  */
 int art_iter_prefix(art_tree *t, const unsigned char *key, int key_len, art_callback cb, void *data) {

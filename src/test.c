@@ -5,6 +5,7 @@
 
 // toy example
 int main(int argc, char* argv[]){
+    // ---------------------------------- Initialize ----------------------------------
     uint64_t size = 1<<17, num_entries = 2000000;
     uint32_t seed = 0;
     int error;
@@ -30,7 +31,7 @@ int main(int argc, char* argv[]){
     uint64_t key, val;
     const uint8_t* val_ret;
 
-    // insertion
+    // ---------------------------------- Insert ----------------------------------
     printf("Insert Test: ");
     clock_t start = clock(),finish;
     for(uint64_t key=0; key<num_entries; key++){
@@ -48,14 +49,14 @@ int main(int argc, char* argv[]){
     printf("Passed in %.3lf s. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d), size of hash table:%lux%d\n", 
         (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key, index->hash->size, BIN_CAPACITY);
 
-    // expansion
+    // ---------------------------------- Expand ----------------------------------
     printf("Expansion Test (%s): ", hash_expand==hash_expand_copy?"copy":"reinsert");
     start = clock();
     hash_expand(&index->hash);
     finish = clock() - start;
     printf("%.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
 
-    // query
+    // ---------------------------------- Query ----------------------------------
     printf("Query Test: ");
     start = clock();
     for(uint64_t i=0; i<num_entries; i++){
@@ -73,7 +74,7 @@ int main(int argc, char* argv[]){
     finish = clock() - start;
     printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
 
-    // update
+    // ---------------------------------- Update ----------------------------------
     printf("Update Test: ");
     start = clock();
     for(uint64_t i=0; i<num_entries; i++){
@@ -95,7 +96,7 @@ int main(int argc, char* argv[]){
     finish = clock() - start;
     printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d)\n"
         , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key);
-    // removal
+    // ---------------------------------- Remove ----------------------------------
     printf("Remove Test: ");
     start = clock();
     for(uint64_t i=0; i<num_entries; i++){
@@ -112,7 +113,8 @@ int main(int argc, char* argv[]){
         printf("Passed Clean in %.3lfs. Tree buffer count = %lu\n", (double)finish / CLOCKS_PER_SEC, index->tree->buffer_count);
     else
         printf("%.3lfs, Buggy: #(hash) = %lu, #(tree) = %lu\n", (double)finish / CLOCKS_PER_SEC, index->hash->count, index->tree->size);
-EXIT:
+    // ---------------------------------- Free up resources ----------------------------------
+EXIT:;
     index_destruct(index);
     return error;
 }
