@@ -9,16 +9,17 @@ Indexing system for heterogeneous storages
 - [x] Count-Min speedup: 
   - [x] One hash computation for multiple lines - chop 128 bit hash value into several.
   - [x] Sharing hash computation for hash table and Count-Min.
-- [ ] Use Count-Min Sketch [x] to distinguish hot data. (Suppose `H` is the hash table, `T` the ART and `x` the key)
+- [x] Implement index compact: hash refill + buffer lifting. 
+- [ ] Smart data placing schedule. (Suppose `H` is the hash table, `T` the ART and `x` the key, `INB` Internal Node Buffer)
   - [x] `Insert(H, x)`: As is, because kicking keys in hash table for `x` can result in unnecessarily heavy write overhead.
   - [x] `Update(H, x)`: If the LRU key is less frequently used than updating key, then kick LRU key.
-  - [ ] `Query(H, x)`: Inc `freq(x)`, and mark/enqueue frequent data (define "frequent"?)
-  - [ ] `Delete(H, x)`: Should we try to bring up some data from ART node buffer?
-  - [ ] `Expand(H)`: Bring up data in ART node buffer into `H`
+  - [ ] `Query(H, x)`: Mark/enqueue frequent data (define "frequent"?)
+  - [x] `Delete(H, x)`: Set a trigger for compact (Say, `load_factor < MIN_LOAD_FACTOR and there are quite some in ART-INB`)
+  - [x] `Expand(H)`: Compact.
   - [x] `Insert(T, x)`: We have the buffer.
-  - [ ] `Update(T, x)`: As we go down the tree, we want to keep an eye on low freq entry / empty space
-  - [ ] `Query(T, x)`: Inc `freq(x)`, and mark/enqueue frequent data (define "frequent"?)
-  - [ ] `Delete(T, x)`: Should we try to bring up some data from ART node buffer?
+  - [ ] `Update(T, x)`: As we go down the tree, if `freq(x) > freq(k)` for `k` in a buffer, replace `k` with `x` and kick `k` down
+  - [ ] `Query(T, x)`: As we go down the tree, we want to keep an eye on low freq entry / empty space. 
+  - [x] `Delete(T, x)`: As is.
 - [ ] Concurrency on DRAM:
   - [x] Hash
   - [ ] ART:
@@ -30,7 +31,7 @@ Indexing system for heterogeneous storages
 - [ ] Test methods and perhaps a benchmark
 - [ ] PMem version
 - [ ] PMem Crash consistency
-  - [ ] Hash: (Mechanism: CAS to mark as occupied -> store value -> store key (valid).)
+  - [ ] Hash: (Mechanism: CAS to mark key as occupied (invalid) -> store value (invalid) -> store real key (valid))
   - [ ] ART:
     - [ ] `add_child`
     - [ ] `split`

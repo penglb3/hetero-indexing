@@ -53,6 +53,7 @@ static art_node* alloc_node(uint8_t type) {
 int art_tree_init(art_tree *t) {
     t->root = NULL;
     t->size = 0;
+    t->buffer_count = 0;
     return 0;
 }
 
@@ -621,7 +622,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
 
         // Check if we are updating an existing value
         if (!leaf_matches(l, key, key_len, depth)) {
-            *old = 1;
+            *old = 2;
             void *old_val = l->value;
             if(replace) *(uint64_t*)l->value = *(uint64_t*)value;
             return old_val;
@@ -653,6 +654,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
                 z = i;
             if(*(uint64_t*)n->buffer[i].key==*(uint64_t*)key){
                 void *old_val = n->buffer[i].value;
+                *old = 2;
                 if(replace) *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
                 return old_val;
             }
@@ -662,6 +664,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
                 if(*(uint64_t*)n->buffer[i].key==0){
                     *(uint64_t*)n->buffer[i].key = *(uint64_t*)key;
                     *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                    *old = 1;
                     return NULL;
                 }
             }
@@ -733,6 +736,10 @@ RECURSIVE_SEARCH:;
 void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value) {
     int old_val = 0;
     void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val, 1);
+    if (IS_LEAF(old_val)){
+        old_val &= ~1;
+        t->buffer_count++;
+    }
     if (!old_val) t->size++;
     return old;
 }
@@ -749,11 +756,15 @@ void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value
 void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, void *value) {
     int old_val = 0;
     void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val, 0);
+    if (IS_LEAF(old_val)){
+        old_val &= ~1;
+        t->buffer_count++;
+    }
     if (!old_val) t->size++;
     return old;
 }
 
-static void remove_child256(art_node256 *n, art_node **ref, unsigned char c) {
+static int remove_child256(art_node256 *n, art_node **ref, unsigned char c) {
     n->children[c] = NULL;
     n->n.num_children--;
 
@@ -774,9 +785,10 @@ static void remove_child256(art_node256 *n, art_node **ref, unsigned char c) {
         }
         free(n);
     }
+    return 0;
 }
 
-static void remove_child48(art_node48 *n, art_node **ref, unsigned char c) {
+static int remove_child48(art_node48 *n, art_node **ref, unsigned char c) {
     int pos = n->keys[c];
     n->keys[c] = 0;
     n->children[pos-1] = NULL;
@@ -798,9 +810,10 @@ static void remove_child48(art_node48 *n, art_node **ref, unsigned char c) {
         }
         free(n);
     }
+    return 0;
 }
 
-static void remove_child16(art_node16 *n, art_node **ref, art_node **l) {
+static int remove_child16(art_node16 *n, art_node **ref, art_node **l) {
     int pos = l - n->children;
     memmove(n->keys+pos, n->keys+pos+1, n->n.num_children - 1 - pos);
     memmove(n->children+pos, n->children+pos+1, (n->n.num_children - 1 - pos)*sizeof(void*));
@@ -814,9 +827,10 @@ static void remove_child16(art_node16 *n, art_node **ref, art_node **l) {
         memcpy(new_node->children, n->children, 4*sizeof(void*));
         free(n);
     }
+    return 0;
 }
 
-static void remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth) {
+static int remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth) {
     int pos = l - n->children;
     memmove(n->keys+pos, n->keys+pos+1, n->n.num_children - 1 - pos);
     memmove(n->children+pos, n->children+pos+1, (n->n.num_children - 1 - pos)*sizeof(void*));
@@ -827,6 +841,7 @@ static void remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth)
             art_leaf *l = make_leaf(n->n.buffer[i].key, KEY_LEN, n->n.buffer[i].value);
             add_child4(n, ref, n->n.buffer[i].key[depth], SET_LEAF(l));
             *(uint64_t*)n->n.buffer[i].key = 0;
+            return 1;
         }
     }
     #endif
@@ -853,9 +868,10 @@ static void remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth)
         *ref = child;
         free(n);
     }
+    return 0;
 }
 
-static void remove_child(art_node *n, art_node **ref, unsigned char c, art_node **l, int depth) {
+static int remove_child(art_node *n, art_node **ref, unsigned char c, art_node **l, int depth) {
     switch (n->type) {
         case NODE4:
             return remove_child4((art_node4*)n, ref, l, depth);
@@ -898,11 +914,11 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
     }
 
     #ifdef BUF_LEN
-    // TODO: Don't go down so soon yet! let's check the buffer!
+    // Don't go down so soon yet! let's check the buffer!
     for(int i=0; i<BUF_LEN; i++){
         if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key){
             *(uint64_t*)n->buffer[i].key = 0;
-            return n->buffer[i].value;
+            return (void*)((uintptr_t)n->buffer[i].value | 1);
         }
     }
     #endif
@@ -915,8 +931,8 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
     if (IS_LEAF(*child)) {
         art_leaf *l = LEAF_RAW(*child);
         if (!leaf_matches(l, key, key_len, depth)) {
-            remove_child(n, ref, key[depth], child, depth);
             old = l->value;
+            old = (void*)((uintptr_t)old | remove_child(n, ref, key[depth], child, depth));
             free(l);
             return old;
         }
@@ -940,6 +956,10 @@ void* art_delete(art_tree *t, const unsigned char *key, int key_len) {
     void *old = recursive_delete(t->root, &t->root, key, key_len, 0);
     if (old) {
         t->size--;
+        if (IS_LEAF(old)){
+            old = (void*)((uintptr_t)old & ~1);
+            t->buffer_count--;
+        }
         return old;
     }
     return NULL;

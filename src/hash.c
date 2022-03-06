@@ -56,7 +56,7 @@ hash_sys* hash_construct(uint64_t size, uint32_t seed){
     return hash_s;
 }
 
-int hash_fresh_insert(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
+static int hash_insert_nocheck_nosafe(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
     uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
     bin* target = hash_s->entries + idx;
     int j = 0;
@@ -112,7 +112,7 @@ int hash_expand_reinsert(hash_sys** hash_ptr){
         curr = hash_s->entries + i;
         for (int j = 0; j < BIN_CAPACITY; j++){
             if (*(uint64_t *)curr->data[j].key)
-                hash_fresh_insert(new_h, curr->data[j].key, curr->data[j].value);
+                hash_insert_nocheck_nosafe(new_h, curr->data[j].key, curr->data[j].value);
         }
     }
     atomic_store(hash_ptr, new_h);
@@ -180,7 +180,22 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
     return HASH_BIN_FULL;
 }
 
-uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(hash_sys*, entry*)){
+int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
+    uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
+    bin* target = hash_s->entries + idx;
+    int j = 0;
+    for(j = 0; j < BIN_CAPACITY; j++){
+        key_h = 0;
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &key_h, key_i64)){
+            atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+            atomic_fetch_add(& hash_s->count, 1);
+            return 0;
+        }
+    }
+    return HASH_BIN_FULL;
+}
+
+const uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, const uint8_t* (*callback)(hash_sys*, entry*)){
     uint64_t key_i64 = *(uint64_t*)key, i = HASH_COMP_IDX(hash_s, key);
     bin* target = hash_s->entries + i;
     for(int j=0; j<BIN_CAPACITY; j++){
@@ -190,13 +205,16 @@ uint8_t* hash_search(hash_sys* hash_s, const uint8_t* key, uint8_t* (*callback)(
     return NULL;
 }
 
-uint8_t* query_callback(hash_sys *h, entry* e){
+const uint8_t* query_callback(hash_sys *h, entry* e){
     return e->value;
 }
 
-uint8_t* delete_callback(hash_sys *h, entry* e){
+const uint8_t* delete_callback(hash_sys *h, entry* e){
     atomic_store((uint64_t*)e->key, 0);
     atomic_fetch_sub(& h->count, 1);
     return (void*)0x1;
 }
 
+double load_factor(hash_sys* h){
+    return (double)h->count * BIN_CAPACITY / h->size;
+}

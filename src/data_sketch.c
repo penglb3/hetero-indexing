@@ -6,7 +6,7 @@
 #include "atomic.h"
 #include "data_sketch.h"
 
-sketch* sketch_init(uint32_t width, uint32_t depth, uint32_t seed, int mode){
+sketch* sketch_construct(uint32_t width, uint32_t depth, uint32_t seed, int mode){
     sketch* sk = calloc(1, sizeof(sketch));
     if(!sk || (width & (width-1))) // ENFORCES that width is a power of 2
         return NULL;

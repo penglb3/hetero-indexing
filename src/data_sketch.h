@@ -10,9 +10,9 @@ typedef struct {
 
 #define COUNT_MIN 1
 #define BLOOM_FILTER 2
-sketch* sketch_init(uint32_t width, uint32_t depth, uint32_t seed, int mode);
-#define countmin_init(w, d, s) sketch_init((w), (d), (s), COUNT_MIN)
-#define bloom_init(w, d, s) sketch_init((w), (d), (s), BLOOM_FILTER)
+sketch* sketch_construct(uint32_t width, uint32_t depth, uint32_t seed, int mode);
+#define countmin_construct(w, d, s) sketch_construct((w), (d), (s), COUNT_MIN)
+#define bloom_construct(w, d, s) sketch_construct((w), (d), (s), BLOOM_FILTER)
 
 void sketch_destroy(sketch* cm);
 #define countmin_destroy sketch_destroy

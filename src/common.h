@@ -14,7 +14,7 @@
 #define KEY_LEN 8
 #define VAL_LEN 8
 
-typedef struct{
+typedef struct entry{
     uint8_t _Alignas(16) key[KEY_LEN];
     uint8_t value[VAL_LEN];
 } entry;
@@ -25,7 +25,7 @@ typedef struct entry_bin{
     entry data[BIN_CAPACITY];
 } bin;
 
-typedef struct hash_metadata{
+typedef struct hash_sys{
     uint32_t seed;
     uint64_t size;
     uint64_t count;
@@ -45,7 +45,7 @@ typedef struct hash_metadata{
  * of all the various node sizes
  */
  #define BUF_LEN 4
-typedef struct {
+typedef struct art_node{
     uint32_t partial_len;
     uint8_t type;
     uint8_t num_children;
@@ -58,7 +58,7 @@ typedef struct {
 /**
  * Small node with only 4 children
  */
-typedef struct {
+typedef struct art_node4{
     art_node n;
     unsigned char keys[4];
     art_node *children[4];
@@ -67,7 +67,7 @@ typedef struct {
 /**
  * Node with 16 children
  */
-typedef struct {
+typedef struct art_node16{
     art_node n;
     unsigned char keys[16];
     art_node *children[16];
@@ -77,7 +77,7 @@ typedef struct {
  * Node with 48 children, but
  * a full 256 byte field.
  */
-typedef struct {
+typedef struct art_node48{
     art_node n;
     unsigned char keys[256];
     art_node *children[48];
@@ -86,7 +86,7 @@ typedef struct {
 /**
  * Full node with 256 children
  */
-typedef struct {
+typedef struct art_node256{
     art_node n;
     art_node *children[256];
 } art_node256;
@@ -95,7 +95,7 @@ typedef struct {
  * Represents a leaf. These are
  * of arbitrary size, as they include the key.
  */
-typedef struct {
+typedef struct art_leaf{
     uint8_t value[VAL_LEN];
     uint32_t key_len;
     unsigned char key[];
@@ -104,14 +104,15 @@ typedef struct {
 /**
  * Main struct, points to root.
  */
-typedef struct {
+typedef struct art_tree{
     art_node *root;
     uint64_t size;
+    uint64_t buffer_count;
 } art_tree;
 
 // ------------------- HETERO.H ---------------------
 #include "data_sketch.h"
-typedef struct index{
+typedef struct index_sys{
     uint8_t has_zero_key, val_for_zero[VAL_LEN];
     sketch *cm, *memb;
     hash_sys* hash;
