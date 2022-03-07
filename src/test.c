@@ -47,7 +47,7 @@ int main(int argc, char* argv[]){
     }
     finish = clock() - start;
     printf("Passed in %.3lf s. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d), size of hash table:%lux%d\n", 
-        (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key, index->hash->size, BIN_CAPACITY);
+        (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_special_key[0]+index->has_special_key[1], index->hash->size, BIN_CAPACITY);
 
     // ---------------------------------- Expand ----------------------------------
     printf("Expansion Test (%s): ", hash_expand==hash_expand_copy?"copy":"reinsert");
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]){
     }
     finish = clock() - start;
     printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d)\n"
-        , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_zero_key);
+        , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_special_key[0]+index->has_special_key[1]);
     // ---------------------------------- Remove ----------------------------------
     printf("Remove Test: ");
     start = clock();

@@ -5,6 +5,7 @@
 #include "murmur3.h"
 #include "atomic.h"
 #include "data_sketch.h"
+#include "common.h"
 
 sketch* sketch_construct(uint32_t width, uint32_t depth, uint32_t seed, int mode){
     sketch* sk = calloc(1, sizeof(sketch));
@@ -44,6 +45,8 @@ static inline uint32_t min(uint32_t a, uint32_t b){
 int countmin_inc_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
     uint32_t idx, minimal = UINT32_MAX, tot_shift = 0;
     uint64_t hash[2];
+    if(IS_SPECIAL_KEY(data)) // For special key, especially OCCUPIED_FLAG, 
+        return INT32_MAX; // We don't want caller to move them down, so return INT_MAX
     if(!ext_hash)
         MurmurHash3_x64_128(data, len, cm->seed, hash);
     else 
@@ -70,6 +73,8 @@ int countmin_inc_explicit(sketch* cm, const void* data, uint32_t len, void* ext_
 int countmin_query_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
     uint32_t minimal = UINT32_MAX, idx, tot_shift = 0;
     uint64_t hash[2];
+    if(IS_SPECIAL_KEY(data)) // For special key, especially OCCUPIED_FLAG, 
+        return INT32_MAX; // We don't want caller to move them down, so return INT_MAX
     if(!ext_hash)
         MurmurHash3_x64_128(data, len, cm->seed, hash);
     else 

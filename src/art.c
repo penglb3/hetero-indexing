@@ -262,7 +262,7 @@ static int leaf_matches(const art_leaf *n, const unsigned char *key, int key_len
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_search(const art_tree *t, const unsigned char *key, int key_len) {
+void* art_search(const art_tree *t, const unsigned char *key, int key_len, art_inb_tracer tracer) {
     art_node **child;
     art_node *n = t->root;
     int prefix_len, depth = 0;
@@ -287,7 +287,7 @@ void* art_search(const art_tree *t, const unsigned char *key, int key_len) {
         #ifdef BUF_LEN
         // TODO: Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
-            if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key)
+            if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key)
                 return n->buffer[i].value;
         }
         #endif
@@ -309,7 +309,7 @@ void* art_search(const art_tree *t, const unsigned char *key, int key_len) {
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_update(const art_tree *t, const unsigned char *key, int key_len, void* value) {
+void* art_update(const art_tree *t, const unsigned char *key, int key_len, void* value, art_inb_tracer tracer) {
     art_node **child;
     art_node *n = t->root;
     int prefix_len, depth = 0;
@@ -334,9 +334,9 @@ void* art_update(const art_tree *t, const unsigned char *key, int key_len, void*
         #ifdef BUF_LEN
         // TODO: Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
-            if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key){
+            if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 void* old = n->buffer[i].value;
-                *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
                 return old;
             }
         }
@@ -612,9 +612,10 @@ static int prefix_mismatch(const art_node *n, const unsigned char *key, int key_
 static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *key, int key_len, void *value, int depth, int *old, int replace) {
     int storage_type = key_len & 0x7;
     key_len &= ~0x7;
+    uint64_t comp;
     // If we are at a NULL node, inject a leaf
     if (!n) {
-        *ref = (art_node*)SET_LEAF(make_leaf(key, key_len, value));
+        atomic_store(ref, (art_node*)SET_LEAF(make_leaf(key, key_len, value)));
         return NULL;
     }
 
@@ -626,7 +627,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         if (!leaf_matches(l, key, key_len, depth)) {
             *old = 2;
             void *old_val = l->value;
-            if(replace) *(uint64_t*)l->value = *(uint64_t*)value;
+            if(replace) atomic_store((uint64_t*)l->value, *(uint64_t*)value);
             return old_val;
         }
 
@@ -641,9 +642,9 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         new_node->n.partial_len = longest_prefix;
         memcpy(new_node->n.partial, key+depth, min(MAX_PREFIX_LEN, longest_prefix));
         // Add the leafs to the new node4
-        *ref = (art_node*)new_node;
         add_child4(new_node, ref, l->key[depth+longest_prefix], SET_LEAF(l));
         add_child4(new_node, ref, l2->key[depth+longest_prefix], SET_LEAF(l2));
+        atomic_store(ref, (art_node*)new_node);
         return NULL;
     }
 
@@ -652,20 +653,20 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
     if(storage_type == MEM_TYPE){
         int z = -1;
         for(int i=0; i<BUF_LEN; i++){
-            if(*(uint64_t*)n->buffer[i].key==0) 
+            if(atomic_load((uint64_t*)n->buffer[i].key)==0) 
                 z = i;
-            if(*(uint64_t*)n->buffer[i].key==*(uint64_t*)key){
+            if(atomic_load((uint64_t*)n->buffer[i].key)==*(uint64_t*)key){
                 void *old_val = n->buffer[i].value;
                 *old = 2;
-                if(replace) *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                if(replace) atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
                 return old_val;
             }
         }
         if(!replace && z != -1)
             for(int i=z; i<BUF_LEN; i++){
-                if(*(uint64_t*)n->buffer[i].key==0){
-                    *(uint64_t*)n->buffer[i].key = *(uint64_t*)key;
-                    *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
+                comp = 0;
+                if(atomic_compare_exchange_strong((uint64_t*)n->buffer[i].key, &comp, *(uint64_t*)key)){
+                    atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
                     *old = 1;
                     return NULL;
                 }
@@ -684,7 +685,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
 
         // Create a new node
         art_node4 *new_node = (art_node4*)alloc_node(NODE4);
-        *ref = (art_node*)new_node;
+        
         new_node->n.partial_len = prefix_diff;
         memcpy(new_node->n.partial, n->partial, min(MAX_PREFIX_LEN, prefix_diff));
         #ifdef BUF_LEN
@@ -694,21 +695,22 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
 
         // Adjust the prefix of the old node
         if (n->partial_len <= MAX_PREFIX_LEN) {
-            add_child4(new_node, ref, n->partial[prefix_diff], n);
+            add_child4(new_node, (art_node**)&new_node, n->partial[prefix_diff], n);
             n->partial_len -= (prefix_diff+1);
             memmove(n->partial, n->partial+prefix_diff+1,
                     min(MAX_PREFIX_LEN, n->partial_len));
         } else {
             n->partial_len -= (prefix_diff+1);
             art_leaf *l = minimum(n);
-            add_child4(new_node, ref, l->key[depth+prefix_diff], n);
+            add_child4(new_node, (art_node**)&new_node, l->key[depth+prefix_diff], n);
             memcpy(n->partial, l->key+depth+prefix_diff+1,
                     min(MAX_PREFIX_LEN, n->partial_len));
         }
 
         // Insert the new leaf
         art_leaf *l = make_leaf(key, key_len, value);
-        add_child4(new_node, ref, key[depth+prefix_diff], SET_LEAF(l));
+        add_child4(new_node, (art_node**)&new_node, key[depth+prefix_diff], SET_LEAF(l));
+        atomic_store(ref, (art_node*)new_node);
         return NULL;
     }
 

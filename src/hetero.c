@@ -10,6 +10,8 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
         return NULL;
     index->hash = hash_construct(hash_size, seed);
     index->tree = calloc(1, sizeof(art_tree));
+    index->has_special_key[0] = 0;
+    index->has_special_key[1] = 0;
     if(!index->hash || !index->tree) 
         return NULL;
     index->cm = countmin_construct(CM_WIDTH, CM_DEPTH, index->hash->seed);
@@ -28,9 +30,9 @@ void index_destruct(index_sys* index){
 
 int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int storage_type){
     int status;
-    if(*(uint64_t*)key == 0){
-        atomic_store(& index->has_zero_key, 1);
-        atomic_store((uint64_t*)index->val_for_zero, *(uint64_t*)value);
+    if(IS_SPECIAL_KEY(key)){
+        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
+        atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
         return 0;
     }
     if(storage_type == MEM_TYPE){
@@ -51,9 +53,9 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
 }
 
 const uint8_t* index_query(index_sys* index, const uint8_t* key){
-    if(*(uint64_t*)key == 0){
-        if(atomic_load(& index->has_zero_key)){
-            return index->val_for_zero;
+    if(IS_SPECIAL_KEY(key)){
+        if(atomic_load(index->has_special_key + *(uint64_t*)key)){
+            return index->special_key_val[*(uint64_t*)key];
         }
         else
             return NULL;
@@ -61,27 +63,29 @@ const uint8_t* index_query(index_sys* index, const uint8_t* key){
     const uint8_t* error = hash_query(index, key);
     if(error) 
         return error;
-    return art_search(index->tree, key, KEY_LEN);
+    art_inb_tracer t = {0, NULL, index->cm};
+    return art_search(index->tree, key, KEY_LEN, t);
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
-    if(*(uint64_t*)key == 0){
-        atomic_store(& index->has_zero_key, 1);
-        atomic_store((uint64_t*)index->val_for_zero, *(uint64_t*)value);
+    if(IS_SPECIAL_KEY(key)){
+        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
+        atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
         return 0;
     }
     countmin_inc(index->cm, (const void*)key, KEY_LEN);
     int status = hash_update(index, key, value);
+    art_inb_tracer t = {0, NULL, index->cm};
     if(status == ELEMENT_NOT_FOUND){
-        return art_update(index->tree, key, KEY_LEN, (void*)value) == NULL;
+        return art_update(index->tree, key, KEY_LEN, (void*)value, t) == NULL;
     }
     return 0;
 }
 
 int index_delete(index_sys* index, const uint8_t* key){
-    if(*(uint64_t*)key == 0){
+    if(IS_SPECIAL_KEY(key)){
         uint8_t s = 1;
-        return !atomic_compare_exchange_strong(& index->has_zero_key, &s, 0);
+        return !atomic_compare_exchange_strong(index->has_special_key + *(uint64_t*)key, &s, 0);
     }
     int status = hash_delete(index, key);
     if(status){
@@ -155,5 +159,5 @@ int index_expand(index_sys* index){
 }
 
 uint64_t index_size(index_sys* index){
-    return index->hash->count + index->tree->size + index->has_zero_key;
+    return index->hash->count + index->tree->size + index->has_special_key[0] + index->has_special_key[1];
 }

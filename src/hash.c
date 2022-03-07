@@ -141,7 +141,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
             atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
             return 0;
         }
-        if(key_h == 0 && available == -1)
+        if(key_h == EMPTY_FLAG && available == -1)
             available = j;
         if(min_cnt && available == -1) {
             cnt = countmin_query(ind->cm, (const void*)target->data[j].value, KEY_LEN);
@@ -160,7 +160,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
     // If there is an empty slot, then try insert. 
     if(available != -1)
         for(j = available; j < BIN_CAPACITY; j++){
-            comp = 0;
+            comp = EMPTY_FLAG;
             if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, key_i64)){
                 atomic_fetch_add(& hash_s->count, 1);
                 atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
@@ -168,13 +168,18 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mo
             }
         }
     else if(i_min != -1){ // No empty slot, but we do have an key_lru (that means we are to UPDATE)
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, &key_lru, key_i64)){
-            comp = atomic_exchange((uint64_t*)target->data[i_min].value, *(uint64_t*)value);
-            // Since we have the key in the system, but not in hash table, then it must be in ART
-            art_delete(ind->tree, key, KEY_LEN);
-            // Now put key_lru in ART.
-            art_insert_no_replace(ind->tree, (void*)&key_lru, MEM_TYPE, (void*)&comp);
-            return 0;
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, &key_lru, OCCUPIED_FLAG)){
+            // No one's gonna use h[] now, feel free to use it!
+            h[0] = atomic_exchange((uint64_t*)target->data[i_min].value, *(uint64_t*)value);
+            h[1] = OCCUPIED_FLAG; 
+            if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, h+1, key_i64)){
+                // Since we have the key in the system, but not in hash table, then it must be in ART
+                art_delete(ind->tree, key, KEY_LEN);
+                // Now put key_lru in ART.
+                art_insert_no_replace(ind->tree, (void*)&key_lru, MEM_TYPE, (void*)h);
+                return 0;
+            }
+            return -1; // Normally this shouldn't happen.
         }
     }
     return HASH_BIN_FULL;

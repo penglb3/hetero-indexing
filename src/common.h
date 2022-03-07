@@ -112,13 +112,20 @@ typedef struct art_tree{
 
 // ------------------- HETERO.H ---------------------
 #include "data_sketch.h"
+#define EMPTY_FLAG 0
+#define OCCUPIED_FLAG 1
+#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
 typedef struct index_sys{
-    uint8_t has_zero_key, val_for_zero[VAL_LEN];
+    uint8_t has_special_key[2], special_key_val[2][VAL_LEN];
     sketch *cm, *memb;
     hash_sys* hash;
     art_tree* tree;
 } index_sys;
 
-#define LRU_FREQ_THR 0.05
+typedef struct art_inb_tracer{
+    uint64_t min_cnt;
+    entry* target;
+    sketch *cm;
+} art_inb_tracer;
 
 #endif // COMMON_H
