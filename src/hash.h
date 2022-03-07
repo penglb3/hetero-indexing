@@ -41,9 +41,9 @@ void hash_destruct(hash_sys* h);
                  while the non-strict one does.)
 * @return a int indicating the outcome.
 */
-int hash_modify(index_sys* h, const uint8_t* key, const uint8_t* value, int mode);
-#define hash_insert(h, k, v) hash_modify((h), (k), (v), INSERT)
-#define hash_update(h, k, v) hash_modify((h), (k), (v), STRICT_UPDATE)
+int hash_modify(index_sys* h, const uint8_t* key, const uint8_t* value, int* freq, int mode);
+#define hash_insert(h, k, v) hash_modify((h), (k), (v), NULL, INSERT)
+#define hash_update(h, k, v, fp) hash_modify((h), (k), (v), (fp), STRICT_UPDATE)
 /**
 * Insertion without check for duplicate.
 * @param h:       the hash system to operate on
@@ -72,10 +72,11 @@ const uint8_t* delete_callback(hash_sys* h, entry* e);
 const uint8_t* hash_search(
     index_sys* h, 
     const uint8_t* key, 
+    int* freq, 
     const uint8_t* (*callback)(hash_sys*, entry* e)
 );
-#define hash_query(i, key) hash_search((i), (key), query_callback)
-#define hash_delete(i, key) (hash_search((i), (key), delete_callback) ? 0 : ELEMENT_NOT_FOUND)
+#define hash_query(i, key, freq) hash_search((i), (key), (freq), query_callback)
+#define hash_delete(i, key) (hash_search((i), (key), NULL, delete_callback) ? 0 : ELEMENT_NOT_FOUND)
 
 /**
  * Hash expansion function pointer, should be either `hash_expand_copy` or `hash_expand_copy`

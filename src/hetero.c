@@ -60,11 +60,11 @@ const uint8_t* index_query(index_sys* index, const uint8_t* key){
         else
             return NULL;
     }
-    const uint8_t* error = hash_query(index, key);
+    int freq = 0;
+    const uint8_t* error = hash_query(index, key, &freq);
     if(error) 
         return error;
-    art_inb_tracer t = {0, NULL, index->cm};
-    return art_search(index->tree, key, KEY_LEN, t);
+    return art_search(index->tree, key, freq, index->cm);
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
@@ -73,11 +73,10 @@ int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
         atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
         return 0;
     }
-    countmin_inc(index->cm, (const void*)key, KEY_LEN);
-    int status = hash_update(index, key, value);
-    art_inb_tracer t = {0, NULL, index->cm};
+    int freq;
+    int status = hash_update(index, key, value, &freq);
     if(status == ELEMENT_NOT_FOUND){
-        return art_update(index->tree, key, KEY_LEN, (void*)value, t) == NULL;
+        return art_update(index->tree, key, freq, (void*)value, index->cm) == NULL;
     }
     return 0;
 }

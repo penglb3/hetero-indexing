@@ -20,7 +20,7 @@ Indexing system for heterogeneous storages.
   - [x] One hash computation for multiple lines - chop 128 bit hash value into several.
   - [x] Sharing hash computation for hash table and Count-Min.
 - [x] Implement index compact: hash refill + buffer lifting. 
-- [ ] Smart data placing schedule. (Suppose `H` is the hash table, `T` the ART and `x` the key, `INB` Internal Node Buffer. 
+- [x] Smart data placing schedule. (Suppose `H` is the hash table, `T` the ART and `x` the key, `INB` Internal Node Buffer. 
       **Basic Assumption / Design: Shallow layers of the ART should hold hot data, while deep layers should hold colder / io-type data**)
   - [x] `Insert(H, x)`: As is, because kicking keys in hash table for newcomer `x` can result in (unnecessarily) heavy write overhead. Plus, there's no easy way to tell whether we should kick a key down or not.
   - [x] `Update(H, x)`: If the LRU key is less frequently used than updating key, then kick LRU key.
@@ -28,8 +28,8 @@ Indexing system for heterogeneous storages.
   - [x] `Delete(H, x)`: Set a trigger for compact (Say, `load_factor < MIN_LOAD_FACTOR and there are quite some in ART-INB`)
   - [x] `Expand(H)`: Compact.
   - [x] `Insert(T, x)`: We have the buffer for this.
-  - [ ] `Update(T, x)`: As we go down the tree, if `freq(x) > freq(k)` for `k` in a buffer, replace `k` with `x` and kick `k` down
-  - [ ] `Query(T, x)`: Just like `Update(T, x)`
+  - [x] `Update(T, x)`: As we go down the tree, if `freq(x) > freq(k)` for `k` in a buffer, replace `k` with `x` and kick `k` down (TODO: this turns out to be very costly, any way to improve?)
+  - [x] `Query(T, x)`: Just like `Update(T, x)`
   - [x] `Delete(T, x)`: As is.
 - [ ] Concurrency on DRAM:
   - [x] Hash

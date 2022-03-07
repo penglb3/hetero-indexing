@@ -125,13 +125,15 @@ int hash_expand_reinsert(hash_sys** hash_ptr){
     return 0;
 };
 
-int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int mode){
+int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* freq, int mode){
     hash_sys* hash_s = ind->hash;
     uint64_t h[2], comp = 0, key_i64 = *(uint64_t*)key, key_h, key_lru;
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     int j = 0, available = -1, i_min = -1, cnt = INT32_MAX, 
         min_cnt = (mode & INSERT) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
+    if((mode & INSERT) == 0 && freq)
+        *freq = min_cnt;
     for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
         key_h = atomic_load((uint64_t*)target->data[j].key);
         if(key_h == key_i64){ // FOUND the key!
@@ -200,12 +202,12 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
     return HASH_BIN_FULL;
 }
 
-const uint8_t* hash_search(index_sys* ind, const uint8_t* key, const uint8_t* (*callback)(hash_sys*, entry*)){
+const uint8_t* hash_search(index_sys* ind, const uint8_t* key, int* freq, const uint8_t* (*callback)(hash_sys*, entry*)){
     hash_sys* hash_s = ind->hash;
     uint64_t key_i64 = *(uint64_t*)key, h[2];
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
-    if(callback == query_callback)
-        countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
+    if(callback == query_callback && freq)
+        *freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     for(int j=0; j<BIN_CAPACITY; j++){
         if(atomic_load((uint64_t*)target->data[j].key) == key_i64)

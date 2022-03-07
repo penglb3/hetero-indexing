@@ -84,12 +84,16 @@ void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, 
  * Searches for a value in the ART tree, update it inplace and returns old value
  * @param t The tree
  * @param key The key
- * @param key_len The length of the key
+ * @param freq Estimated frequency of the key to query. 
+ *              This parameter will be used to weight the importance of the data and place the data in INB accordingly, 
+ *              so you can also manually set a very high value if you want to place the data at very top,
+ *              or just give a 0 TO DISABLE the internal smart data re-placing mechanism.
  * @param value opaque value.
+ * @param cm The Count-Min Sketch for estimating frequency of keys
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_update(const art_tree *t, const unsigned char *key, int key_len, void* value, art_inb_tracer tracer);
+void* art_update(const art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm);
 
 /**
  * Deletes a value from the ART tree
@@ -105,11 +109,15 @@ void* art_delete(art_tree *t, const unsigned char *key, int key_len);
  * Searches for a value in the ART tree
  * @param t The tree
  * @param key The key
- * @param key_len The length of the key
+ * @param freq Estimated frequency of the key to query. 
+ *              This parameter will be used to weight the importance of the data and place the data in INB accordingly, 
+ *              so you can also manually set a very high value if you want to place the data at very top,
+ *              or just give a 0 TO DISABLE the internal smart data re-placing mechanism.
+ * @param cm The Count-Min Sketch for estimating frequency of other keys
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_search(const art_tree *t, const unsigned char *key, int key_len, art_inb_tracer tracer);
+void* art_search(const art_tree *t, const unsigned char *key, const int freq, sketch* cm);
 
 /**
  * Returns the minimum valued leaf

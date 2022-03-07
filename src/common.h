@@ -122,10 +122,7 @@ typedef struct index_sys{
     art_tree* tree;
 } index_sys;
 
-typedef struct art_inb_tracer{
-    uint64_t min_cnt;
-    entry* target;
-    sketch *cm;
-} art_inb_tracer;
+// We want to be more certain 
+#define EST_SCALE 1.02 
 
 #endif // COMMON_H

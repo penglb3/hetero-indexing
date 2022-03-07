@@ -5,6 +5,7 @@
 #include <assert.h>
 #include "art.h"
 #include "atomic.h"
+#include "data_sketch.h"
 #ifdef __i386__
     #include <emmintrin.h>
 #else
@@ -21,7 +22,7 @@
 #define IS_LEAF(x) (((uintptr_t)x & 1))
 #define SET_LEAF(x) ((void*)((uintptr_t)x | 1))
 #define LEAF_RAW(x) ((art_leaf*)((void*)((uintptr_t)x & ~1)))
-
+static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *key, int key_len, void *value, int depth, int *old, int replace);
 /**
  * Allocates a node of the given type,
  * initializes to zero and sets the type.
@@ -262,16 +263,18 @@ static int leaf_matches(const art_leaf *n, const unsigned char *key, int key_len
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_search(const art_tree *t, const unsigned char *key, int key_len, art_inb_tracer tracer) {
+void* art_search(const art_tree *t, const unsigned char *key, const int freq, sketch* cm) {
     art_node **child;
-    art_node *n = t->root;
-    int prefix_len, depth = 0;
+    art_node *n = t->root, *node_lru = NULL;
+    int prefix_len, depth = 0, depth_lru;
+    uint64_t key_lru = EMPTY_FLAG, value, one = 1;
+    entry* entry_lru = NULL;
     while (n) {
         // Might be a leaf
         if (IS_LEAF(n)) {
             n = (art_node*)LEAF_RAW(n);
             // Check if the expanded path matches
-            if (!leaf_matches((art_leaf*)n, key, key_len, depth)) {
+            if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 return ((art_leaf*)n)->value;
             }
             return NULL;
@@ -279,16 +282,30 @@ void* art_search(const art_tree *t, const unsigned char *key, int key_len, art_i
 
         // Bail if the prefix does not match
         if (n->partial_len) {
-            prefix_len = check_prefix(n, key, key_len, depth);
+            prefix_len = check_prefix(n, key, KEY_LEN, depth);
             if (prefix_len != min(MAX_PREFIX_LEN, n->partial_len))
                 return NULL;
             depth = depth + n->partial_len;
         }
         #ifdef BUF_LEN
-        // TODO: Don't go down so soon yet! let's check the buffer!
+        // Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
-            if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key)
+            if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
+                if(key_lru != EMPTY_FLAG && depth > depth_lru && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){                    
+                    value = atomic_exchange((uint64_t*)entry_lru->value, atomic_load((uint64_t*)n->buffer[i].value));
+                    atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
+                    recursive_insert(node_lru, &node_lru, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&value, depth_lru, &depth_lru,0);
+                    return entry_lru->value;
+                }
                 return n->buffer[i].value;
+            }
+            if(freq && key_lru == EMPTY_FLAG && freq > EST_SCALE * countmin_query(cm, n->buffer[i].key, KEY_LEN)){
+                depth_lru = depth;
+                key_lru = atomic_load((uint64_t*)n->buffer[i].key);
+                entry_lru = n->buffer + i;
+                node_lru = n;
+            }
+            
         }
         #endif
 
@@ -309,16 +326,18 @@ void* art_search(const art_tree *t, const unsigned char *key, int key_len, art_i
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_update(const art_tree *t, const unsigned char *key, int key_len, void* value, art_inb_tracer tracer) {
+void* art_update(const art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm) {
     art_node **child;
-    art_node *n = t->root;
-    int prefix_len, depth = 0;
+    art_node *n = t->root, *node_lru = NULL;
+    int prefix_len, depth = 0, depth_lru;
+    uint64_t key_lru = EMPTY_FLAG, val;
+    entry* entry_lru = NULL;
     while (n) {
         // Might be a leaf
         if (IS_LEAF(n)) {
             n = (art_node*)LEAF_RAW(n);
             // Check if the expanded path matches
-            if (!leaf_matches((art_leaf*)n, key, key_len, depth)) {
+            if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 return (void*)atomic_exchange((uint64_t*)((art_leaf*)n)->value, *(uint64_t*)value);
             }
             return NULL;
@@ -326,18 +345,30 @@ void* art_update(const art_tree *t, const unsigned char *key, int key_len, void*
 
         // Bail if the prefix does not match
         if (n->partial_len) {
-            prefix_len = check_prefix(n, key, key_len, depth);
+            prefix_len = check_prefix(n, key, KEY_LEN, depth);
             if (prefix_len != min(MAX_PREFIX_LEN, n->partial_len))
                 return NULL;
             depth = depth + n->partial_len;
         }
         #ifdef BUF_LEN
-        // TODO: Don't go down so soon yet! let's check the buffer!
+        // Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 void* old = n->buffer[i].value;
+                if(key_lru != EMPTY_FLAG && depth > depth_lru && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){
+                    val = atomic_exchange((uint64_t*)entry_lru->value, *(uint64_t*)value);
+                    atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
+                    recursive_insert(node_lru, &node_lru, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&val, depth_lru, &depth_lru,0);
+                    return entry_lru->value;
+                }
                 atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
                 return old;
+            }
+            if(freq && key_lru == EMPTY_FLAG && freq > EST_SCALE * countmin_query(cm, n->buffer[i].key, KEY_LEN)){
+                key_lru = atomic_load((uint64_t*)n->buffer[i].key);
+                entry_lru = n->buffer + i;
+                node_lru = n;
+                depth_lru = depth;
             }
         }
         #endif
