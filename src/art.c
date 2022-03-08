@@ -3,6 +3,7 @@
 #include <strings.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 #include "art.h"
 #include "atomic.h"
 #include "data_sketch.h"
@@ -22,7 +23,13 @@
 #define IS_LEAF(x) (((uintptr_t)x & 1))
 #define SET_LEAF(x) ((void*)((uintptr_t)x | 1))
 #define LEAF_RAW(x) ((art_leaf*)((void*)((uintptr_t)x & ~1)))
+#define INSERT_FOUND_KEY_FLAG 2
+#define INSERT_IS_IN_BUFFER_FLAG 1
+#define INSERT_FOUND_KEY(x) (x & INSERT_FOUND_KEY_FLAG)
+#define INSERT_IS_IN_BUFFER(x) (x & INSERT_IS_IN_BUFFER_FLAG)
+
 static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *key, int key_len, void *value, int depth, int *old, int replace);
+static int prefix_mismatch(const art_node *n, const unsigned char *key, int key_len, int depth);
 /**
  * Allocates a node of the given type,
  * initializes to zero and sets the type.
@@ -255,6 +262,10 @@ static int leaf_matches(const art_leaf *n, const unsigned char *key, int key_len
     return memcmp(n->key, key, key_len);
 }
 
+static inline double max(double a, double b){
+    return a > b ? a : b;
+}
+
 /**
  * Searches for a value in the ART tree
  * @param t The tree
@@ -263,11 +274,11 @@ static int leaf_matches(const art_leaf *n, const unsigned char *key, int key_len
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_search(const art_tree *t, const unsigned char *key, const int freq, sketch* cm) {
+void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* cm) {
     art_node **child;
     art_node *n = t->root, *node_lru = NULL;
-    int prefix_len, depth = 0, depth_lru;
-    uint64_t key_lru = EMPTY_FLAG, value, one = 1;
+    int prefix_len, depth = 0, depth_lru = 0, freq_lru = INT32_MAX, f;
+    uint64_t key_lru = EMPTY_FLAG, val, one = 1, key_i;
     entry* entry_lru = NULL;
     while (n) {
         // Might be a leaf
@@ -291,24 +302,43 @@ void* art_search(const art_tree *t, const unsigned char *key, const int freq, sk
         // Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
-                if(key_lru != EMPTY_FLAG && depth > depth_lru && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){                    
-                    value = atomic_exchange((uint64_t*)entry_lru->value, atomic_load((uint64_t*)n->buffer[i].value));
-                    atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
-                    recursive_insert(node_lru, &node_lru, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&value, depth_lru, &depth_lru,0);
+                #ifdef SMART_REPLACING
+                for(int j=0; freq && node_lru && j<BUF_LEN; j++){
+                    key_i = atomic_load((uint64_t*)node_lru->buffer[j].key);
+                    if(IS_SPECIAL_KEY_U64(key_i)) continue;
+                    f = countmin_count(cm, &key_i, KEY_LEN);
+                    f = ceil(max(f*EST_SCALE, f + EST_DIFF)) ;
+                    if(freq > f || (freq == f && memcmp(key + depth_lru, (uint8_t*)&key_i + depth_lru, depth - depth_lru) == 0)){
+                        key_lru = key_i;
+                        entry_lru = node_lru->buffer + j;
+                        break;
+                    }
+                }
+                if(key_lru != EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){  
+                    if(memcmp(key + depth_lru, (uint8_t*)&key_lru + depth_lru, depth - depth_lru)) { // Have to reinsert
+                        val = atomic_exchange((uint64_t*)entry_lru->value, atomic_load((uint64_t*)n->buffer[i].value));
+                        atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
+                        atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
+                        f = 0;
+                        recursive_insert(node_lru, &node_lru, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&val, depth_lru, &f,0);
+                        t->buffer_count -= !INSERT_IS_IN_BUFFER(f);
+                    }
+                    else{ // key_lru and key match, so we can directly swap both of them.
+                        atomic_store((uint64_t*)n->buffer[i].key, 1);
+                        val = atomic_exchange((uint64_t*)entry_lru->value, atomic_load((uint64_t*)n->buffer[i].value));
+                        atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
+                        atomic_store((uint64_t*)n->buffer[i].value, val);
+                        atomic_store((uint64_t*)n->buffer[i].key, key_lru);
+                    }
                     return entry_lru->value;
                 }
+                #endif // SMART_REPLACING
                 return n->buffer[i].value;
             }
-            if(freq && key_lru == EMPTY_FLAG && freq > EST_SCALE * countmin_query(cm, n->buffer[i].key, KEY_LEN)){
-                depth_lru = depth;
-                key_lru = atomic_load((uint64_t*)n->buffer[i].key);
-                entry_lru = n->buffer + i;
-                node_lru = n;
-            }
-            
         }
-        #endif
-
+        #endif // BUF_LEN
+        node_lru = n;
+        depth_lru = depth;
         // Recursively search
         child = find_child(n, key[depth]);
         n = (child) ? *child : NULL;
@@ -326,11 +356,11 @@ void* art_search(const art_tree *t, const unsigned char *key, const int freq, sk
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_update(const art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm) {
+void* art_update(art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm) {
     art_node **child;
     art_node *n = t->root, *node_lru = NULL;
-    int prefix_len, depth = 0, depth_lru;
-    uint64_t key_lru = EMPTY_FLAG, val;
+    int prefix_len, depth = 0, depth_lru = 0, freq_lru = INT32_MAX, f;
+    uint64_t key_lru = EMPTY_FLAG, val, one = 1, key_i;
     entry* entry_lru = NULL;
     while (n) {
         // Might be a leaf
@@ -355,24 +385,44 @@ void* art_update(const art_tree *t, const unsigned char *key, const int freq, vo
         for(int i=0; i<BUF_LEN; i++){
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 void* old = n->buffer[i].value;
-                if(key_lru != EMPTY_FLAG && depth > depth_lru && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){
-                    val = atomic_exchange((uint64_t*)entry_lru->value, *(uint64_t*)value);
-                    atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
-                    recursive_insert(node_lru, &node_lru, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&val, depth_lru, &depth_lru,0);
+                #ifdef SMART_REPLACING
+                for(int j=0; freq && node_lru && j<BUF_LEN; j++){
+                    key_i = atomic_load((uint64_t*)node_lru->buffer[j].key);
+                    if(IS_SPECIAL_KEY_U64(key_i)) continue;
+                    f = countmin_count(cm, &key_i, KEY_LEN);
+                    f = ceil(max(f*EST_SCALE, f + EST_DIFF)) ;
+                    if(freq > f || (freq == f && memcmp(key + depth_lru, (uint8_t*)&key_i + depth_lru, depth - depth_lru) == 0)){
+                        key_lru = key_i;
+                        entry_lru = node_lru->buffer + j;
+                        break;
+                    }
+                }
+                if(key_lru != EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){  
+                    if(memcmp(key + depth_lru, (uint8_t*)&key_lru + depth_lru, depth - depth_lru)) { // Have to reinsert
+                        val = atomic_exchange((uint64_t*)entry_lru->value, *(uint64_t*)value);
+                        atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
+                        atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
+                        f = 0;
+                        recursive_insert(node_lru, &node_lru, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&val, depth_lru, &f, 0);
+                        t->buffer_count -= !INSERT_IS_IN_BUFFER(f);
+                    }
+                    else{ // key_lru and key match, so we can directly swap both of them.
+                        atomic_store((uint64_t*)n->buffer[i].key, 1);
+                        val = atomic_exchange((uint64_t*)entry_lru->value, *(uint64_t*)value);
+                        atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
+                        atomic_store((uint64_t*)n->buffer[i].value, val);
+                        atomic_store((uint64_t*)n->buffer[i].key, key_lru);
+                    }
                     return entry_lru->value;
                 }
+                #endif
                 atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
                 return old;
             }
-            if(freq && key_lru == EMPTY_FLAG && freq > EST_SCALE * countmin_query(cm, n->buffer[i].key, KEY_LEN)){
-                key_lru = atomic_load((uint64_t*)n->buffer[i].key);
-                entry_lru = n->buffer + i;
-                node_lru = n;
-                depth_lru = depth;
-            }
         }
         #endif
-
+        node_lru = n;
+        depth_lru = depth;
         // Recursively search
         child = find_child(n, key[depth]);
         n = (child) ? *child : NULL;
@@ -656,7 +706,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
 
         // Check if we are updating an existing value
         if (!leaf_matches(l, key, key_len, depth)) {
-            *old = 2;
+            *old = INSERT_FOUND_KEY_FLAG;
             void *old_val = l->value;
             if(replace) atomic_store((uint64_t*)l->value, *(uint64_t*)value);
             return old_val;
@@ -688,7 +738,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
                 z = i;
             if(atomic_load((uint64_t*)n->buffer[i].key)==*(uint64_t*)key){
                 void *old_val = n->buffer[i].value;
-                *old = 2;
+                *old = INSERT_FOUND_KEY_FLAG;
                 if(replace) atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
                 return old_val;
             }
@@ -698,7 +748,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
                 comp = 0;
                 if(atomic_compare_exchange_strong((uint64_t*)n->buffer[i].key, &comp, *(uint64_t*)key)){
                     atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
-                    *old = 1;
+                    *old = INSERT_IS_IN_BUFFER_FLAG;
                     return NULL;
                 }
             }
@@ -721,8 +771,8 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         memcpy(new_node->n.partial, n->partial, min(MAX_PREFIX_LEN, prefix_diff));
         #ifdef BUF_LEN
         memcpy(new_node->n.buffer, n->buffer, sizeof(entry)*BUF_LEN);
-        #endif
         memset(n->buffer, 0, sizeof(entry)*BUF_LEN);
+        #endif
 
         // Adjust the prefix of the old node
         if (n->partial_len <= MAX_PREFIX_LEN) {
@@ -771,8 +821,8 @@ RECURSIVE_SEARCH:;
 void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value) {
     int old_val = 0;
     void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val, 1);
-    if (IS_LEAF(old_val)){
-        old_val &= ~1;
+    if (INSERT_IS_IN_BUFFER(old_val)){
+        old_val ^= INSERT_IS_IN_BUFFER_FLAG;
         t->buffer_count++;
     }
     if (!old_val) t->size++;
@@ -791,8 +841,8 @@ void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value
 void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, void *value) {
     int old_val = 0;
     void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val, 0);
-    if (IS_LEAF(old_val)){
-        old_val &= ~1;
+    if (INSERT_IS_IN_BUFFER(old_val)){
+        old_val ^= INSERT_IS_IN_BUFFER_FLAG;
         t->buffer_count++;
     }
     if (!old_val) t->size++;
@@ -866,19 +916,21 @@ static int remove_child16(art_node16 *n, art_node **ref, art_node **l) {
 }
 
 static int remove_child4(art_node4 *n, art_node **ref, art_node **l, int depth) {
-    int pos = l - n->children;
+    int pos = l - n->children, cnt = 0;
     memmove(n->keys+pos, n->keys+pos+1, n->n.num_children - 1 - pos);
     memmove(n->children+pos, n->children+pos+1, (n->n.num_children - 1 - pos)*sizeof(void*));
     n->n.num_children--;
     #ifdef BUF_LEN
     for(int i=0; i<BUF_LEN; i++){
-        if(n->n.num_children < 4 && *(uint64_t*)n->n.buffer[i].key){
-            art_leaf *l = make_leaf(n->n.buffer[i].key, KEY_LEN, n->n.buffer[i].value);
-            add_child4(n, ref, n->n.buffer[i].key[depth], SET_LEAF(l));
-            *(uint64_t*)n->n.buffer[i].key = 0;
-            return 1;
+        if(n->n.num_children < 4 && !IS_SPECIAL_KEY(n->n.buffer[i].key)){
+            art_leaf *k = make_leaf(n->n.buffer[i].key, KEY_LEN, n->n.buffer[i].value);
+            add_child4(n, ref, n->n.buffer[i].key[depth], SET_LEAF(k));
+            *(uint64_t*)n->n.buffer[i].key = EMPTY_FLAG;
+            cnt++;
         }
     }
+    if(cnt)
+        return cnt;
     #endif
     // Remove nodes with only a single child
     if (n->n.num_children == 1) {
@@ -925,7 +977,7 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
     // Search terminated
     if (!n) return NULL;
 
-    void *old;
+    void *old = NULL;
 
     // Handle hitting a leaf node
     if (IS_LEAF(n)) {
@@ -952,7 +1004,7 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
     // Don't go down so soon yet! let's check the buffer!
     for(int i=0; i<BUF_LEN; i++){
         if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key){
-            *(uint64_t*)n->buffer[i].key = 0;
+            atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
             return (void*)((uintptr_t)n->buffer[i].value | 1);
         }
     }
@@ -989,12 +1041,12 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
  */
 void* art_delete(art_tree *t, const unsigned char *key, int key_len) {
     void *old = recursive_delete(t->root, &t->root, key, key_len, 0);
+    if ((uintptr_t)old & 0x7){
+        t->buffer_count -= (uintptr_t)old & 0x7;
+        old = (void*)((uintptr_t)old & ~7);
+    }
     if (old) {
         t->size--;
-        if (IS_LEAF(old)){
-            old = (void*)((uintptr_t)old & ~1);
-            t->buffer_count--;
-        }
         return old;
     }
     return NULL;

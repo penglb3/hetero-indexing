@@ -46,8 +46,8 @@ int main(int argc, char* argv[]){
         }
     }
     finish = clock() - start;
-    printf("Passed in %.3lf s. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d), size of hash table:%lux%d\n", 
-        (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_special_key[0]+index->has_special_key[1], index->hash->size, BIN_CAPACITY);
+    printf("Passed in %.3lf s. # of entries in indexing system:%lu([H]%lu+[T]%lu(%lu)+[F]%d)\n", 
+        (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->tree->buffer_count, index->has_special_key[0]+index->has_special_key[1]);
 
     // ---------------------------------- Expand ----------------------------------
     printf("Expansion Test (%s): ", hash_expand==hash_expand_copy?"copy":"reinsert");
@@ -72,8 +72,9 @@ int main(int argc, char* argv[]){
         }
     }
     finish = clock() - start;
-    printf("Passed in %.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
-
+    printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu(%lu)+[F]%d)\n"
+        , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->tree->buffer_count, index->has_special_key[0]+index->has_special_key[1]);
+    if(debug_count) printf("Debug_count: %d\n", debug_count);
     // ---------------------------------- Update ----------------------------------
     printf("Update Test: ");
     start = clock();
@@ -94,8 +95,9 @@ int main(int argc, char* argv[]){
         }
     }
     finish = clock() - start;
-    printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu+[F]%d)\n"
-        , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->has_special_key[0]+index->has_special_key[1]);
+    printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu(%lu)+[F]%d)\n"
+        , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->tree->buffer_count, index->has_special_key[0]+index->has_special_key[1]);
+    if(debug_count) printf("Debug_count: %d\n", debug_count);
     // ---------------------------------- Remove ----------------------------------
     printf("Remove Test: ");
     start = clock();
@@ -110,7 +112,7 @@ int main(int argc, char* argv[]){
     }
     finish = clock() - start;
     if(index_size(index)==0)
-        printf("Passed Clean in %.3lfs. Tree buffer count = %lu\n", (double)finish / CLOCKS_PER_SEC, index->tree->buffer_count);
+        printf("Passed Clean in %.3lfs. Tree buffer count = %lx\n", (double)finish / CLOCKS_PER_SEC, index->tree->buffer_count);
     else
         printf("%.3lfs, Buggy: #(hash) = %lu, #(tree) = %lu\n", (double)finish / CLOCKS_PER_SEC, index->hash->count, index->tree->size);
     // ---------------------------------- Free up resources ----------------------------------

@@ -14,6 +14,10 @@
 #define KEY_LEN 8
 #define VAL_LEN 8
 
+#define UPDATE_KICK 1 // To disable hash update kicking, just undef this. 
+#define BUF_LEN 3 // To disable ART INB, just undef this.
+#define SMART_REPLACING 1 // To disable ART update smart replacing, just undef this
+#define COMPACT 1
 typedef struct entry{
     uint8_t _Alignas(16) key[KEY_LEN];
     uint8_t value[VAL_LEN];
@@ -44,15 +48,15 @@ typedef struct hash_sys{
  * This struct is included as part
  * of all the various node sizes
  */
- #define BUF_LEN 4
+
 typedef struct art_node{
     uint32_t partial_len;
     uint8_t type;
     uint8_t num_children;
+    unsigned char partial[MAX_PREFIX_LEN];
 #ifdef BUF_LEN
     entry buffer[BUF_LEN];
 #endif
-    unsigned char partial[MAX_PREFIX_LEN];
 } art_node;
 
 /**
@@ -115,6 +119,7 @@ typedef struct art_tree{
 #define EMPTY_FLAG 0
 #define OCCUPIED_FLAG 1
 #define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
+#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
 typedef struct index_sys{
     uint8_t has_special_key[2], special_key_val[2][VAL_LEN];
     sketch *cm, *memb;
@@ -122,7 +127,9 @@ typedef struct index_sys{
     art_tree* tree;
 } index_sys;
 
+int debug_count;
+
 // We want to be more certain 
 #define EST_SCALE 1.02 
-
+#define EST_DIFF 0 // For now we set to 0 for test.
 #endif // COMMON_H

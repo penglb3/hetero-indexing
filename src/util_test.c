@@ -65,7 +65,7 @@ int main(){
             }
             break;
         case 4:
-            res = countmin_query(cm, str, LEN);
+            res = countmin_count(cm, str, LEN);
             printf("Count-Min: I would say it's %d time(s).\n", res);
             break;
         case 5:

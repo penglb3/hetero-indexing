@@ -130,10 +130,12 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
     uint64_t h[2], comp = 0, key_i64 = *(uint64_t*)key, key_h, key_lru;
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
-    int j = 0, available = -1, i_min = -1, cnt = INT32_MAX, 
-        min_cnt = (mode & INSERT) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
+    int j = 0, available = -1, i_min = -1, cnt = INT32_MAX;
+    #ifdef UPDATE_KICK
+    int min_cnt = (mode & INSERT) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
     if((mode & INSERT) == 0 && freq)
         *freq = min_cnt;
+    #endif
     for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
         key_h = atomic_load((uint64_t*)target->data[j].key);
         if(key_h == key_i64){ // FOUND the key!
@@ -145,14 +147,16 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
         }
         if(key_h == EMPTY_FLAG && available == -1)
             available = j;
-        if(min_cnt && available == -1) {
-            cnt = countmin_query(ind->cm, (const void*)target->data[j].value, KEY_LEN);
+        #ifdef UPDATE_KICK
+        if(min_cnt > 0 && available == -1) {
+            cnt = countmin_count(ind->cm, (const void*)target->data[j].value, KEY_LEN);
             if(min_cnt > cnt){
                 min_cnt = cnt;
                 i_min = j;
                 key_lru = key_h;
             }
         }
+        #endif
     }
     // Reaching this point means key is not in hash table.
     if(mode == STRICT_UPDATE) // In strict update, insertion is not allowed!
@@ -188,12 +192,12 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
 }
 
 int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* value){
-    uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, key_h;
+    uint64_t idx = HASH_COMP_IDX(hash_s, key), key_i64 = *(uint64_t*)key, empty;
     bin* target = hash_s->entries + idx;
     int j = 0;
     for(j = 0; j < BIN_CAPACITY; j++){
-        key_h = 0;
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &key_h, key_i64)){
+        empty = EMPTY_FLAG;
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &empty, key_i64)){
             atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
             atomic_fetch_add(& hash_s->count, 1);
             return 0;

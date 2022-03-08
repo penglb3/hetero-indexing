@@ -93,7 +93,7 @@ void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, 
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_update(const art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm);
+void* art_update(art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm);
 
 /**
  * Deletes a value from the ART tree
@@ -117,7 +117,7 @@ void* art_delete(art_tree *t, const unsigned char *key, int key_len);
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_search(const art_tree *t, const unsigned char *key, const int freq, sketch* cm);
+void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* cm);
 
 /**
  * Returns the minimum valued leaf

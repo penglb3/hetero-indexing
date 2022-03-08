@@ -1,7 +1,7 @@
 #ifndef DATA_SKETCH_H
 #define DATA_SKETCH_H
 #include <stdint.h>
-typedef struct {
+typedef struct data_sketch {
     uint32_t width, depth;
     uint32_t seed;
     uint32_t shift;
@@ -54,9 +54,9 @@ int countmin_inc_explicit(sketch* cm, const void* data, uint32_t len, void* ext_
  * @param ext_hash pointer to 128-bit hash value for the data. If NULL, will compute using cm->seed.
  * @return the count of the data
  */
-int countmin_query_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash);
+int countmin_count_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash);
 #define countmin_inc(cm, data, len) countmin_inc_explicit((cm), (data), (len), NULL)
-#define countmin_query(cm, data, len) countmin_query_explicit((cm), (data), (len), NULL)
+#define countmin_count(cm, data, len) countmin_count_explicit((cm), (data), (len), NULL)
 
 #define countmin_clear(cm) memset((cm)->counts, 0, (cm)->depth * (cm)->width);
 

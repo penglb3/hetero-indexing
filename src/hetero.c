@@ -31,8 +31,8 @@ void index_destruct(index_sys* index){
 int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int storage_type){
     int status;
     if(IS_SPECIAL_KEY(key)){
-        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
         atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
+        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
         return 0;
     }
     if(storage_type == MEM_TYPE){
@@ -69,8 +69,8 @@ const uint8_t* index_query(index_sys* index, const uint8_t* key){
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
     if(IS_SPECIAL_KEY(key)){
-        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
         atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
+        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
         return 0;
     }
     int freq;
@@ -105,11 +105,12 @@ int index_compact(index_sys* index, double max_load_factor){
     art_node* n = index->tree->root, **children, *c;
     int error, continuous_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
     queue_push(q, n);
+    #ifdef COMPACT
     while(!queue_empty(q)){
         n = queue_pop(q);
         if(is_leaf(n)) continue; // IS LEAF
         for(int i = 0; i < BUF_LEN; i++){
-            if(*(uint64_t*)n->buffer[i].key){
+            if(!IS_SPECIAL_KEY(n->buffer[i].key)){
                 if(continuous_failure < 3 && load_factor(index->hash) < max_load_factor){
                     error = hash_insert_nocheck(index->hash, n->buffer[i].key, n->buffer[i].value);
                     if (!error){
@@ -147,6 +148,7 @@ int index_compact(index_sys* index, double max_load_factor){
                 queue_push(q, c);
         }
     }
+    #endif // COMPACT
     queue_destruct(q);
     debug("[CF]%d [Hash Fill]%d\n", continuous_failure, index->hash->count - cnt);
     return 0;

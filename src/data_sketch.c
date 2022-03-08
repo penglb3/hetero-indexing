@@ -17,7 +17,7 @@ sketch* sketch_construct(uint32_t width, uint32_t depth, uint32_t seed, int mode
         sk->counts = calloc(width / (sizeof(uint32_t)*8), sizeof(uint32_t));
     }
     else if(mode == COUNT_MIN){
-        sk->counts = calloc(depth * width, sizeof(uint32_t));
+        sk->counts = calloc(depth * width, sizeof(__typeof__(*sk->counts)));
         sk->shift = __builtin_ctz(sk->width);
         if(sk->shift * sk->depth > 128)
             return NULL;
@@ -70,7 +70,7 @@ int countmin_inc_explicit(sketch* cm, const void* data, uint32_t len, void* ext_
     return minimal;
 };
 
-int countmin_query_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
+int countmin_count_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
     uint32_t minimal = UINT32_MAX, idx, tot_shift = 0;
     uint64_t hash[2];
     if(IS_SPECIAL_KEY(data)) // For special key, especially OCCUPIED_FLAG, 

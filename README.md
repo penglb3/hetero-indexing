@@ -2,11 +2,12 @@
 Indexing system for heterogeneous storages. 
 
 ## Requirements
-- GCC supporting C11. You need to replace the atomic functions with other implementation if your compiler doesn't support C11.
+- GCC >= 4.9.0 (You need to replace the atomic functions with other implementation if your compiler doesn't support C11.)
 
 ## Test Environments
 ### Env #1
 - CPU: AMD Ryzen 5 3600
+- DRAM: 16G DDR4 3200
 - OS: WSL2-Ubuntu 18.04.5 LTS
 - Compiler: gcc version 7.5.0 (Ubuntu 7.5.0-3ubuntu1~18.04)
 - Make: GNU Make 4.1 Built for x86_64-pc-linux-gnu
