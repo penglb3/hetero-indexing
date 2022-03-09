@@ -12,6 +12,21 @@ Indexing system for heterogeneous storages.
 - Compiler: gcc version 7.5.0 (Ubuntu 7.5.0-3ubuntu1~18.04)
 - Make: GNU Make 4.1 Built for x86_64-pc-linux-gnu
 
+## More than Hash + ART
+(Suppose `H` is the hash table, `T` the ART and `x` the key, `INB` Internal Node Buffer. )
+
+- ART internal node buffer(INB):
+  - Caches a few KV pair on the path, reducing DRAM accesses and hence overhead. The design goal is that **shallow layers of the ART should hold hot data, while deep layers should hold colder / io-type data.**
+  - Node split will create more buffer.
+  - Internal node split 
+  - When node type changes, the buffer will also be copied.
+  - When a child is removed from a node4, buffered entries will become new children of that node4. So when a path compression takes place (a node4 only has 1 child), the buffer is guaranteed to be empty.
+- `Update(H, x)`: SINK: If the LRU key is less frequently used than updating key, then kick LRU key.
+- `Delete(H, x)`: A trigger is set for batch COMPACT (Say, `load_factor < MIN_LOAD_FACTOR and there are quite some in ART-INB`)
+- `Expand(H)`: Auto COMPACT.
+- `Update(T, x)`: FLOAT: If `freq(x) > freq(x')` for an `x'` in parent's buffer, replace `x'` with `x` and kick `x'` down.
+- `Query(T, x)`: FLOAT: Just like `Update(T, x)`
+
 ## TODO (for dissertation. LOL idk if i can finish these.)
 - [x] APIs (CRUD)
 - [x] Implement backbone data structures: Hash table, ART.
@@ -21,20 +36,10 @@ Indexing system for heterogeneous storages.
   - [x] One hash computation for multiple lines - chop 128 bit hash value into several.
   - [x] Sharing hash computation for hash table and Count-Min.
 - [x] Implement index compact: hash refill + buffer lifting. 
-- [x] Smart data placing schedule. (Suppose `H` is the hash table, `T` the ART and `x` the key, `INB` Internal Node Buffer. 
-      **Basic Assumption / Design: Shallow layers of the ART should hold hot data, while deep layers should hold colder / io-type data**)
-  - [x] `Insert(H, x)`: As is, because kicking keys in hash table for newcomer `x` can result in (unnecessarily) heavy write overhead. Plus, there's no easy way to tell whether we should kick a key down or not.
-  - [x] `Update(H, x)`: If the LRU key is less frequently used than updating key, then kick LRU key.
-  - [x] `Query(H, x)`: As is, because there is little we can do to elements in hash table.
-  - [x] `Delete(H, x)`: Set a trigger for compact (Say, `load_factor < MIN_LOAD_FACTOR and there are quite some in ART-INB`)
-  - [x] `Expand(H)`: Compact.
-  - [x] `Insert(T, x)`: We have the buffer for this.
-  - [x] `Update(T, x)`: As we go down the tree, if `freq(x) > freq(k)` for `k` in a buffer, replace `k` with `x` and kick `k` down (TODO: this turns out to be very costly, any way to improve?)
-  - [x] `Query(T, x)`: Just like `Update(T, x)`
-  - [x] `Delete(T, x)`: As is.
+- [x] Smart data placing schedule. 
 - [ ] Concurrency on DRAM:
-  - [x] Hash
-  - [ ] ART:
+  - [x] Hash: TODO: Fix search to use 128-bit atomic load and return uint64_t.
+  - [ ] ART: will use ROWEX
     - [ ] `add_child`
     - [ ] `split`
     - [ ] `remove_child`

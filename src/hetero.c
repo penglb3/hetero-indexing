@@ -52,19 +52,21 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
     return art_insert_no_replace(index->tree, key, storage_type | KEY_LEN, (void*)value) != NULL;
 }
 
-const uint8_t* index_query(index_sys* index, const uint8_t* key){
+int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
     if(IS_SPECIAL_KEY(key)){
         if(atomic_load(index->has_special_key + *(uint64_t*)key)){
-            return index->special_key_val[*(uint64_t*)key];
+            *query_result = atomic_load((uint64_t*)index->special_key_val[*(uint64_t*)key]);
+            return 0;
         }
         else
-            return NULL;
+            return 1;
     }
     int freq = 0;
-    const uint8_t* error = hash_query(index, key, &freq);
-    if(error) 
-        return error;
-    return art_search(index->tree, key, freq, index->cm);
+    if(hash_query(index, key, &freq, query_result)) 
+        return 0;
+    void* result = art_search(index->tree, key, freq, index->cm);
+    *query_result = *(uint64_t*)result;
+    return result == NULL;
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
@@ -86,8 +88,8 @@ int index_delete(index_sys* index, const uint8_t* key){
         uint8_t s = 1;
         return !atomic_compare_exchange_strong(index->has_special_key + *(uint64_t*)key, &s, 0);
     }
-    int status = hash_delete(index, key);
-    if(status){
+    int found = hash_delete(index, key);
+    if(!found){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }
     if( load_factor(index->hash) < 0.6 && index->tree->buffer_count )

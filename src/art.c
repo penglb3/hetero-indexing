@@ -302,10 +302,17 @@ void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* 
         // Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
-                #ifdef SMART_REPLACING
+                #ifdef SDR_FLOAT
                 for(int j=0; freq && node_lru && j<BUF_LEN; j++){
                     key_i = atomic_load((uint64_t*)node_lru->buffer[j].key);
-                    if(IS_SPECIAL_KEY_U64(key_i)) continue;
+                    if(key_i == EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)node_lru->buffer[j].key, &key_i, 1)){
+                        atomic_store((uint64_t*)node_lru->buffer[j].value, atomic_load((uint64_t*)n->buffer[i].value));
+                        atomic_store((uint64_t*)node_lru->buffer[j].key, *(uint64_t*)key);
+                        atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
+                        return node_lru->buffer[j].value;
+                    }
+                    if(key_i == OCCUPIED_FLAG) 
+                        continue;
                     f = countmin_count(cm, &key_i, KEY_LEN);
                     f = ceil(max(f*EST_SCALE, f + EST_DIFF)) ;
                     if(freq > f || (freq == f && memcmp(key + depth_lru, (uint8_t*)&key_i + depth_lru, depth - depth_lru) == 0)){
@@ -332,7 +339,7 @@ void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* 
                     }
                     return entry_lru->value;
                 }
-                #endif // SMART_REPLACING
+                #endif // SDR_FLOAT
                 return n->buffer[i].value;
             }
         }
@@ -385,10 +392,17 @@ void* art_update(art_tree *t, const unsigned char *key, const int freq, void* va
         for(int i=0; i<BUF_LEN; i++){
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 void* old = n->buffer[i].value;
-                #ifdef SMART_REPLACING
+                #ifdef SDR_FLOAT
                 for(int j=0; freq && node_lru && j<BUF_LEN; j++){
                     key_i = atomic_load((uint64_t*)node_lru->buffer[j].key);
-                    if(IS_SPECIAL_KEY_U64(key_i)) continue;
+                    if(key_i == EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)node_lru->buffer[j].key, &key_i, 1)){
+                        atomic_store((uint64_t*)node_lru->buffer[j].value, *(uint64_t*)value);
+                        atomic_store((uint64_t*)node_lru->buffer[j].key, *(uint64_t*)key);
+                        atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
+                        return node_lru->buffer[j].value;
+                    }
+                    if(key_i == OCCUPIED_FLAG) 
+                        continue;
                     f = countmin_count(cm, &key_i, KEY_LEN);
                     f = ceil(max(f*EST_SCALE, f + EST_DIFF)) ;
                     if(freq > f || (freq == f && memcmp(key + depth_lru, (uint8_t*)&key_i + depth_lru, depth - depth_lru) == 0)){

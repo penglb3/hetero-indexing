@@ -61,22 +61,26 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
 */
 const uint8_t* query_callback(hash_sys* h, entry* e);
 const uint8_t* delete_callback(hash_sys* h, entry* e);
+#define HASH_QUERY 1
+#define HASH_DELETE 2
 /**
 * Unified search
 * @param h:         the INDEX system to operate on
 * @param key:       the key you wish to find in the HASH system
-* @param callback:  whatever you wish to do when you found the key at row @i, col @j. 
-                    It returns a const uint8*.
-* @return NULL if key is not found, otherwise returns a uint8* returned by hash_callback. 
+* @param freq:      a pointer to store the estimated frequecy of the key.
+* @param result:    a pointer to store query's result value.
+* @param mode:      one in [HASH_QUERY, HASH_DELETE].
+* @return 0 if key not found, otherwise non-zero value indicating key found.
 */
-const uint8_t* hash_search(
+int hash_search(
     index_sys* h, 
     const uint8_t* key, 
     int* freq, 
-    const uint8_t* (*callback)(hash_sys*, entry* e)
+    uint64_t* result, 
+    int mode
 );
-#define hash_query(i, key, freq) hash_search((i), (key), (freq), query_callback)
-#define hash_delete(i, key) (hash_search((i), (key), NULL, delete_callback) ? 0 : ELEMENT_NOT_FOUND)
+#define hash_query(i, key, freq, res) hash_search((i), (key), (freq), (res), HASH_QUERY)
+#define hash_delete(i, key) hash_search((i), (key), NULL, NULL, HASH_DELETE) 
 
 /**
  * Hash expansion function pointer, should be either `hash_expand_copy` or `hash_expand_copy`

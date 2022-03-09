@@ -1,5 +1,5 @@
 CC := gcc# compiler to use
-CFLAGS := -Wall -Wno-unused -g -std=c11 -mcx16# compiling options
+CFLAGS := -Wall -Wno-unused -g -std=c11 -mcx16 -O3# compiling options
 LDFLAGS := -lm
 EXEC := hetero
 UTEST := util_test

@@ -44,9 +44,10 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
  * 
  * @param index the index system to look into
  * @param key the key to look for
- * @return NULL if key not found, otherwise const uint8_t* pointing the value
+ * @param query_result a pointer to store query's result value.
+ * @return 0 if key found, otherwise non-zero error code
  */
-const uint8_t* index_query(index_sys* index, const uint8_t* key);
+int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result);
 
 /**
  * @brief Update a key's associated value. 

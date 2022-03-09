@@ -131,7 +131,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     int j = 0, available = -1, i_min = -1, cnt = INT32_MAX;
-    #ifdef UPDATE_KICK
+    #ifdef SDR_FLOAT
     int min_cnt = (mode & INSERT) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
     if((mode & INSERT) == 0 && freq)
         *freq = min_cnt;
@@ -147,7 +147,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
         }
         if(key_h == EMPTY_FLAG && available == -1)
             available = j;
-        #ifdef UPDATE_KICK
+        #ifdef SDR_FLOAT
         if(min_cnt > 0 && available == -1) {
             cnt = countmin_count(ind->cm, (const void*)target->data[j].value, KEY_LEN);
             if(min_cnt > cnt){
@@ -167,9 +167,10 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
     if(available != -1)
         for(j = available; j < BIN_CAPACITY; j++){
             comp = EMPTY_FLAG;
-            if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, key_i64)){
-                atomic_fetch_add(& hash_s->count, 1);
+            if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, OCCUPIED_FLAG)){
                 atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+                atomic_store((uint64_t*)target->data[j].key, key_i64);
+                atomic_fetch_add(& hash_s->count, 1);
                 return 0;
             }
         }
@@ -197,8 +198,9 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
     int j = 0;
     for(j = 0; j < BIN_CAPACITY; j++){
         empty = EMPTY_FLAG;
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &empty, key_i64)){
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &empty, OCCUPIED_FLAG)){
             atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+            atomic_store((uint64_t*)target->data[j].key, *(uint64_t*)key);
             atomic_fetch_add(& hash_s->count, 1);
             return 0;
         }
@@ -206,18 +208,27 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
     return HASH_BIN_FULL;
 }
 
-const uint8_t* hash_search(index_sys* ind, const uint8_t* key, int* freq, const uint8_t* (*callback)(hash_sys*, entry*)){
+int hash_search(index_sys* ind, const uint8_t* key, int* freq, uint64_t* result, int mode){
     hash_sys* hash_s = ind->hash;
     uint64_t key_i64 = *(uint64_t*)key, h[2];
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
-    if(callback == query_callback && freq)
+    if(mode == HASH_QUERY && freq)
         *freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     for(int j=0; j<BIN_CAPACITY; j++){
-        if(atomic_load((uint64_t*)target->data[j].key) == key_i64)
-            return callback(hash_s, target->data + j);
+        if(atomic_load((uint64_t*)target->data[j].key) == key_i64){
+            if(mode == HASH_QUERY){
+                *result = atomic_load((uint64_t*)target->data[j].value);
+                return atomic_load((uint64_t*)target->data[j].key) == key_i64;
+            }
+            else if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &key_i64, EMPTY_FLAG)){
+                atomic_fetch_sub(& hash_s->count, 1);
+                return 1;
+            }
+            return 0;
+        }
     }
-    return NULL;
+    return 0;
 }
 
 const uint8_t* query_callback(hash_sys *h, entry* e){

@@ -8,7 +8,8 @@ int main(int argc, char* argv[]){
     // ---------------------------------- Initialize ----------------------------------
     uint64_t size = 1<<17, num_entries = 2000000;
     uint32_t seed = 0;
-    int error;
+    int error, status;
+    uint64_t result_value;
     double load_factor = -1;
     debug = do_nothing;
     hash_expand = hash_expand_copy;
@@ -61,11 +62,11 @@ int main(int argc, char* argv[]){
     start = clock();
     for(uint64_t i=0; i<num_entries; i++){
         key = (uint64_t)&i;
-        val_ret = index_query(index, (const uint8_t*)key);
-        if(val_ret==NULL || (*(uint64_t*)(val_ret)) != i){
+        status = index_query(index, (const uint8_t*)key, &result_value);
+        if(status || result_value != i){
             printf("!! query of key %lu failed ", i);
-            printf("(val_ret %p[%s]", val_ret, val_ret?"non null":"null");
-            if(val_ret) printf(", result %s)\n", (*(uint64_t*)(val_ret)) != i?"not equal":"equal");
+            printf("(return code %d", status);
+            if(!status) printf(", query result %lu[%sequal])\n", result_value, result_value != i?"not ":"");
             else printf(")\n");
             error = 2;
             goto EXIT;
@@ -83,14 +84,13 @@ int main(int argc, char* argv[]){
         val = 2*i + 1;
         error = index_update(index, (const uint8_t*)key, (const uint8_t*)&val);
         val = i;
-        val_ret = index_query(index, (const uint8_t*)key);
-        if(error || val_ret==NULL || (*(uint64_t*)(val_ret)) != 2*i+1){
-            printf("!! update of key %lu failed (", i);
-            printf("return code %d, ", error);
-            printf("val_ret %s", val_ret?"non null":"null");
-            if(val_ret) printf(", result %sequal)\n", (*(uint64_t*)(val_ret)) == 2*i+1?"not ":"");
+        status = index_query(index, (const uint8_t*)key, &result_value);
+        if(status || result_value != 2*i+1){
+            printf("!! update of key %lu failed ", i);
+            printf("(return code %d", status);
+            if(!status) printf(", query result %lu[%sequal])\n", result_value, result_value != 2*i+1?"not ":"");
             else printf(")\n");
-            error = 3;
+            error = 2;
             goto EXIT;
         }
     }

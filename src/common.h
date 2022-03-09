@@ -14,14 +14,21 @@
 #define KEY_LEN 8
 #define VAL_LEN 8
 
-#define UPDATE_KICK 1 // To disable hash update kicking, just undef this. 
-#define BUF_LEN 3 // To disable ART INB, just undef this.
-#define SMART_REPLACING 1 // To disable ART update smart replacing, just undef this
-#define COMPACT 1
 typedef struct entry{
     uint8_t _Alignas(16) key[KEY_LEN];
     uint8_t value[VAL_LEN];
 } entry;
+// ------------- SPECIAL KEY VALUES -----------------
+#define EMPTY_FLAG 0
+#define OCCUPIED_FLAG 1
+#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
+#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
+#define IS_OCCUPIED(key) ((*(uint64_t*)(key) == 1)
+#define IS_EMPTY(key) ((*(uint64_t*)(key) == 0)
+// ------------- FUNCTIONALITY SWITCHES -------------
+#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
+#define SDR_FLOAT 1 // To disable ART update & search smart replacing FLOAT, just undef this. 
+#define COMPACT 1 // To disable index COMPACT, just undef this.
 // ------------------- HASH.H ---------------------
 #define BIN_CAPACITY 8
 
@@ -41,7 +48,7 @@ typedef struct hash_sys{
 #define NODE16  2
 #define NODE48  3
 #define NODE256 4
-
+#define BUF_LEN 3 // To disable ART INB, just undef this.
 #define MAX_PREFIX_LEN KEY_LEN
 
 /**
@@ -116,10 +123,7 @@ typedef struct art_tree{
 
 // ------------------- HETERO.H ---------------------
 #include "data_sketch.h"
-#define EMPTY_FLAG 0
-#define OCCUPIED_FLAG 1
-#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
-#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
+
 typedef struct index_sys{
     uint8_t has_special_key[2], special_key_val[2][VAL_LEN];
     sketch *cm, *memb;
