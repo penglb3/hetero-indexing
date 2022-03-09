@@ -38,11 +38,10 @@ Indexing system for heterogeneous storages.
 - [x] Implement index compact: hash refill + buffer lifting. 
 - [x] Smart data placing schedule. 
 - [ ] Concurrency on DRAM:
-  - [x] Hash: TODO: Fix search to use 128-bit atomic load and return uint64_t.
+  - [x] Hash
   - [ ] ART: will use ROWEX
-    - [ ] `add_child`
+    - [ ] `one-node modifications`
     - [ ] `split`
-    - [ ] `remove_child`
     - [ ] `compaction`
 ## Future Works
 - [ ] Test methods and perhaps a benchmark

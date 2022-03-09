@@ -56,10 +56,6 @@ static art_node* alloc_node(uint8_t type) {
     return n;
 }
 
-/**
- * Initializes an ART tree
- * @return 0 on success.
- */
 int art_tree_init(art_tree *t) {
     t->root = NULL;
     t->size = 0;
@@ -126,10 +122,6 @@ static void destroy_node(art_node *n) {
     free(n);
 }
 
-/**
- * Destroys an ART tree
- * @return 0 on success.
- */
 int art_tree_destroy(art_tree *t) {
     destroy_node(t->root);
     return 0;
@@ -266,15 +258,7 @@ static inline double max(double a, double b){
     return a > b ? a : b;
 }
 
-/**
- * Searches for a value in the ART tree
- * @param t The tree
- * @param key The key
- * @param key_len The length of the key
- * @return NULL if the item was not found, otherwise
- * the value pointer is returned.
- */
-void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* cm) {
+int art_search(art_tree *t, const unsigned char *key, const int freq, uint64_t* query_result, sketch* cm) {
     art_node **child;
     art_node *n = t->root, *node_lru = NULL;
     int prefix_len, depth = 0, depth_lru = 0, freq_lru = INT32_MAX, f;
@@ -286,30 +270,32 @@ void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* 
             n = (art_node*)LEAF_RAW(n);
             // Check if the expanded path matches
             if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
-                return ((art_leaf*)n)->value;
+                *query_result = atomic_load((uint64_t*)((art_leaf*)n)->value);
+                return 1;
             }
-            return NULL;
+            return 0;
         }
 
         // Bail if the prefix does not match
         if (n->partial_len) {
             prefix_len = check_prefix(n, key, KEY_LEN, depth);
             if (prefix_len != min(MAX_PREFIX_LEN, n->partial_len))
-                return NULL;
+                return 0;
             depth = depth + n->partial_len;
         }
         #ifdef BUF_LEN
         // Don't go down so soon yet! let's check the buffer!
         for(int i=0; i<BUF_LEN; i++){
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
+                *query_result = atomic_load((uint64_t*)n->buffer[i].value);
                 #ifdef SDR_FLOAT
                 for(int j=0; freq && node_lru && j<BUF_LEN; j++){
                     key_i = atomic_load((uint64_t*)node_lru->buffer[j].key);
                     if(key_i == EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)node_lru->buffer[j].key, &key_i, 1)){
-                        atomic_store((uint64_t*)node_lru->buffer[j].value, atomic_load((uint64_t*)n->buffer[i].value));
+                        atomic_store((uint64_t*)node_lru->buffer[j].value, *query_result);
                         atomic_store((uint64_t*)node_lru->buffer[j].key, *(uint64_t*)key);
                         atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
-                        return node_lru->buffer[j].value;
+                        return 1;
                     }
                     if(key_i == OCCUPIED_FLAG) 
                         continue;
@@ -323,7 +309,7 @@ void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* 
                 }
                 if(key_lru != EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, 1)){  
                     if(memcmp(key + depth_lru, (uint8_t*)&key_lru + depth_lru, depth - depth_lru)) { // Have to reinsert
-                        val = atomic_exchange((uint64_t*)entry_lru->value, atomic_load((uint64_t*)n->buffer[i].value));
+                        val = atomic_exchange((uint64_t*)entry_lru->value, *query_result);
                         atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
                         atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
                         f = 0;
@@ -331,16 +317,15 @@ void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* 
                         t->buffer_count -= !INSERT_IS_IN_BUFFER(f);
                     }
                     else{ // key_lru and key match, so we can directly swap both of them.
-                        atomic_store((uint64_t*)n->buffer[i].key, 1);
-                        val = atomic_exchange((uint64_t*)entry_lru->value, atomic_load((uint64_t*)n->buffer[i].value));
+                        atomic_store((uint64_t*)n->buffer[i].key, OCCUPIED_FLAG);
+                        val = atomic_exchange((uint64_t*)entry_lru->value, *query_result);
                         atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
                         atomic_store((uint64_t*)n->buffer[i].value, val);
                         atomic_store((uint64_t*)n->buffer[i].key, key_lru);
                     }
-                    return entry_lru->value;
                 }
                 #endif // SDR_FLOAT
-                return n->buffer[i].value;
+                return 1;
             }
         }
         #endif // BUF_LEN
@@ -351,18 +336,9 @@ void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* 
         n = (child) ? *child : NULL;
         depth++;
     }
-    return NULL;
+    return 0;
 }
 
-/**
- * Searches for a value in the ART tree, update it inplace and returns old value
- * @param t The tree
- * @param key The key
- * @param key_len The length of the key
- * @param value opaque value.
- * @return NULL if the item was not found, otherwise
- * the value pointer is returned.
- */
 void* art_update(art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm) {
     art_node **child;
     art_node *n = t->root, *node_lru = NULL;
@@ -497,16 +473,10 @@ static art_leaf* maximum(const art_node *n) {
     }
 }
 
-/**
- * Returns the minimum valued leaf
- */
 art_leaf* art_minimum(art_tree *t) {
     return minimum((art_node*)t->root);
 }
 
-/**
- * Returns the maximum valued leaf
- */
 art_leaf* art_maximum(art_tree *t) {
     return maximum((art_node*)t->root);
 }
@@ -823,15 +793,6 @@ RECURSIVE_SEARCH:;
     return NULL;
 }
 
-/**
- * inserts a new value into the art tree
- * @param t the tree
- * @param key the key
- * @param key_len the length of the key
- * @param value opaque value.
- * @return null if the item was newly inserted, otherwise
- * the old value pointer is returned.
- */
 void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value) {
     int old_val = 0;
     void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val, 1);
@@ -843,15 +804,6 @@ void* art_insert(art_tree *t, const unsigned char *key, int key_len, void *value
     return old;
 }
 
-/**
- * inserts a new value into the art tree (no replace)
- * @param t the tree
- * @param key the key
- * @param key_len the length of the key
- * @param value opaque value.
- * @return null if the item was newly inserted, otherwise
- * the old value pointer is returned.
- */
 void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, void *value) {
     int old_val = 0;
     void *old = recursive_insert(t->root, &t->root, key, key_len, value, 0, &old_val, 0);
@@ -1045,14 +997,6 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
     }
 }
 
-/**
- * Deletes a value from the ART tree
- * @param t The tree
- * @param key The key
- * @param key_len The length of the key
- * @return NULL if the item was not found, otherwise
- * the value pointer is returned.
- */
 void* art_delete(art_tree *t, const unsigned char *key, int key_len) {
     void *old = recursive_delete(t->root, &t->root, key, key_len, 0);
     if ((uintptr_t)old & 0x7){
@@ -1115,16 +1059,6 @@ static int recursive_iter(art_node *n, art_callback cb, void *data) {
     return 0;
 }
 
-/**
- * Iterates through the entries pairs in the map,
- * invoking a callback for each. The call back gets a
- * key, value for each and returns an integer stop value.
- * If the callback returns non-zero, then the iteration stops.
- * @param t The tree to iterate over
- * @param cb The callback function to invoke
- * @param data Opaque handle passed to the callback
- * @return 0 on success, or the return of the callback.
- */
 int art_iter(art_tree *t, art_callback cb, void *data) {
     return recursive_iter(t->root, cb, data);
 }
@@ -1141,18 +1075,6 @@ static int leaf_prefix_matches(const art_leaf *n, const unsigned char *prefix, i
     return memcmp(n->key, prefix, prefix_len);
 }
 
-/**
- * Iterates through the entries pairs in the map,
- * invoking a callback for each that matches a given prefix.
- * The call back gets a key, value for each and returns an integer stop value.
- * If the callback returns non-zero, then the iteration stops.
- * @param t The tree to iterate over
- * @param prefix The prefix of keys to read
- * @param prefix_len The length of the prefix
- * @param cb The callback function to invoke
- * @param data Opaque handle passed to the callback
- * @return 0 on success, or the return of the callback.
- */
 int art_iter_prefix(art_tree *t, const unsigned char *key, int key_len, art_callback cb, void *data) {
     art_node **child;
     art_node *n = t->root;

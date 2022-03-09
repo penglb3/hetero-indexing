@@ -230,17 +230,18 @@ int hash_search(index_sys* ind, const uint8_t* key, int* freq, uint64_t* result,
     }
     return 0;
 }
-
+#ifndef HASH_QUERY
 const uint8_t* query_callback(hash_sys *h, entry* e){
     return e->value;
 }
-
+#endif
+#ifndef HASH_DELETE
 const uint8_t* delete_callback(hash_sys *h, entry* e){
     atomic_store((uint64_t*)e->key, 0);
     atomic_fetch_sub(& h->count, 1);
     return (void*)0x1;
 }
-
+#endif
 double load_factor(hash_sys* h){
     return (double)h->count * BIN_CAPACITY / h->size;
 }

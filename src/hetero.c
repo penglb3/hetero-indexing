@@ -64,9 +64,7 @@ int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
     int freq = 0;
     if(hash_query(index, key, &freq, query_result)) 
         return 0;
-    void* result = art_search(index->tree, key, freq, index->cm);
-    *query_result = *(uint64_t*)result;
-    return result == NULL;
+    return !art_search(index->tree, key, freq, query_result, index->cm);
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){

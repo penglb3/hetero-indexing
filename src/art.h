@@ -113,11 +113,12 @@ void* art_delete(art_tree *t, const unsigned char *key, int key_len);
  *              This parameter will be used to weight the importance of the data and place the data in INB accordingly, 
  *              so you can also manually set a very high value if you want to place the data at very top,
  *              or just give a 0 TO DISABLE the internal smart data re-placing mechanism.
+ * @param query_result a pointer to store query result.
  * @param cm The Count-Min Sketch for estimating frequency of other keys
- * @return NULL if the item was not found, otherwise
+ * @return 1 if the item was found, 0 otherwise
  * the value pointer is returned.
  */
-void* art_search(art_tree *t, const unsigned char *key, const int freq, sketch* cm);
+int art_search(art_tree *t, const unsigned char *key, const int freq, uint64_t* query_result, sketch* cm);
 
 /**
  * Returns the minimum valued leaf
