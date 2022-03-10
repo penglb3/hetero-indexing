@@ -3,6 +3,30 @@
 #include <time.h>
 #include "hetero.h"
 
+uint64_t count[BIN_CAPACITY*2+2] = {0};
+
+static void log_stat(hash_sys* hash_s, uint64_t* count_){
+    for(uint64_t i=0, c=0; i<hash_s->size; i++, c=0){
+        for(int j=0; j<BIN_CAPACITY; j++)
+            if(*(uint64_t*)hash_s->entries[i].data[j].key)
+                c++;
+        count_[c]++;
+    }
+}
+
+static void show_stat(hash_sys* hash_s){
+    uint64_t sum = hash_s->size >> 1;
+    debug("Load factor (before expand): %.3lf%\n", (double)(hash_s->count) / (hash_s->size * BIN_CAPACITY) * 200 );
+    debug("#(ENTRY)  : BEFORE     -> AFTER\n");
+    for(int i=0; i<=BIN_CAPACITY; i++)
+        debug("%-10d: %-10d -> %d\n", i, count[i], count[i+BIN_CAPACITY+1]), sum += count[i] - count[i+BIN_CAPACITY+1];
+    if(sum)
+        debug("[WARNING] before - after = %ld, which is not 0!\n", sum);
+    debug("\n");
+    memset(count, 0, sizeof(uint64_t)*(BIN_CAPACITY*2+2));
+}
+
+
 // toy example
 int main(int argc, char* argv[]){
     // ---------------------------------- Initialize ----------------------------------
@@ -52,11 +76,18 @@ int main(int argc, char* argv[]){
 
     // ---------------------------------- Expand ----------------------------------
     printf("Expansion Test (%s): ", hash_expand==hash_expand_copy?"copy":"reinsert");
+    if(debug != do_nothing){
+        log_stat(index->hash, count);
+    }
     start = clock();
     hash_expand(&index->hash);
     finish = clock() - start;
     printf("%.3lfs.\n", (double)finish / CLOCKS_PER_SEC);
-
+    if(debug != do_nothing){
+        debug("[Debug] <!> hash_expand_copy with size %ld ends\n", index->hash->size);
+        log_stat(index->hash, count+BIN_CAPACITY+1);
+        show_stat(index->hash);
+    }
     // ---------------------------------- Query ----------------------------------
     printf("Query Test: ");
     start = clock();
@@ -75,7 +106,6 @@ int main(int argc, char* argv[]){
     finish = clock() - start;
     printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu(%lu)+[F]%d)\n"
         , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->tree->buffer_count, index->has_special_key[0]+index->has_special_key[1]);
-    if(debug_count) printf("Debug_count: %d\n", debug_count);
     // ---------------------------------- Update ----------------------------------
     printf("Update Test: ");
     start = clock();
@@ -97,7 +127,6 @@ int main(int argc, char* argv[]){
     finish = clock() - start;
     printf("Passed in %.3lfs. # of entries in indexing system:%lu([H]%lu+[T]%lu(%lu)+[F]%d)\n"
         , (double)finish / CLOCKS_PER_SEC, index_size(index), index->hash->count, index->tree->size, index->tree->buffer_count, index->has_special_key[0]+index->has_special_key[1]);
-    if(debug_count) printf("Debug_count: %d\n", debug_count);
     // ---------------------------------- Remove ----------------------------------
     printf("Remove Test: ");
     start = clock();

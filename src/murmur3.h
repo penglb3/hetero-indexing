@@ -3,9 +3,7 @@
 // Code adapted from https://github.com/PeterScott/murmur3/blob/master/murmur3.h
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+__BEGIN_DECLS
 /**
  * @brief 64-bit Murmur3 hash 
  * 
@@ -28,8 +26,6 @@ uint64_t MurmurHash3_x64_64 ( const void * key, const int len,
  */
 void MurmurHash3_x64_128 ( const void * key, const int len,
                            const uint32_t seed, void* out);
-#ifdef __cplusplus
-}
-#endif 
+__END_DECLS
 
 #endif // MURMUR3_H

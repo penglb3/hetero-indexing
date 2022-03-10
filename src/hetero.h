@@ -4,7 +4,7 @@
 #include "art.h"
 #include "hash.h"
 #include "data_sketch.h"
-
+__BEGIN_DECLS
 // --------------Index System-----------------
 #define CM_DEPTH 6
 #define CM_WIDTH 1 << 10
@@ -92,5 +92,5 @@ int index_expand(index_sys* index);
  * @return 0 on success.
  */
 int index_compact(index_sys* index, double max_load_factor);
-
+__END_DECLS
 #endif // HETERO_H

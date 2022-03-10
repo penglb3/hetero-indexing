@@ -3,9 +3,7 @@
 #ifndef ART_H
 #define ART_H
 // Code adapted from https://github.com/armon/libart
-#ifdef __cplusplus
-extern "C" {
-#endif
+__BEGIN_DECLS
 
 #if defined(__GNUC__) && !defined(__clang__)
 # if __STDC_VERSION__ >= 199901L && 402 == (__GNUC__ * 100 + __GNUC_MINOR__)
@@ -158,8 +156,6 @@ int art_iter(art_tree *t, art_callback cb, void *data);
  */
 int art_iter_prefix(art_tree *t, const unsigned char *prefix, int prefix_len, art_callback cb, void *data);
 
-#ifdef __cplusplus
-}
-#endif
+__END_DECLS
 
 #endif

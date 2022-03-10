@@ -1,6 +1,7 @@
 #ifndef DATA_SKETCH_H
 #define DATA_SKETCH_H
 #include <stdint.h>
+__BEGIN_DECLS
 typedef struct data_sketch {
     uint32_t width, depth;
     uint32_t seed;
@@ -86,5 +87,5 @@ int bloom_exists(sketch* b, void* data, uint32_t len);
  * @param b the bloom filter to be expanded. Note that it will be cleared.
  */
 void bloom_expand(sketch* b);
-
+__END_DECLS
 #endif // DATA_SKETCH_H

@@ -90,8 +90,8 @@ int index_delete(index_sys* index, const uint8_t* key){
     if(!found){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }
-    if( load_factor(index->hash) < 0.6 && index->tree->buffer_count )
-        index_compact(index, 0.875);
+    if( load_factor(index->hash) < COMPACT_START_LOAD_FACTOR && index->tree->buffer_count )
+        index_compact(index, MAX_COMPACT_LOAD_FACTOR);
     return 0;
 }
 

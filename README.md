@@ -20,7 +20,7 @@ Indexing system for heterogeneous storages.
   - Node split will create more buffer.
   - Internal node split 
   - When node type changes, the buffer will also be copied.
-  - When a child is removed from a node4, buffered entries will become new children of that node4. So when a path compression takes place (a node4 only has 1 child), the buffer is guaranteed to be empty.
+  - When a child is removed from a node4, buffered entries will become new children of that node4. So when a path compression takes place (i.e., when a node4 has only 1 child), the buffer is guaranteed to be empty.
 - `Update(H, x)`: SINK: If the LRU key is less frequently used than updating key, then kick LRU key.
 - `Delete(H, x)`: A trigger is set for batch COMPACT (Say, `load_factor < MIN_LOAD_FACTOR and there are quite some in ART-INB`)
 - `Expand(H)`: Auto COMPACT.
@@ -40,8 +40,11 @@ Indexing system for heterogeneous storages.
 - [ ] Concurrency on DRAM:
   - [x] Hash
   - [ ] ART: will use ROWEX
-    - [ ] `one-node modifications`
-    - [ ] `split`
+    - [ ] `local modifications`:
+      - [ ] ` atomic accesses`: node4 & node16's `key` bytes, node48's `child indexes` and all `children pointers`. 
+      - [ ] For node4 and node16, key sorting need to be deleted. When insert, just add new keys at the end. When delete, just set children ptr to NULL
+    - [ ] `node replacement`: [1] lock node and parent. [2] copy node info to new node. [3] change parent's child pointer to new node. [4] unlock node and mark as OBSOLETE.
+    - [ ] `internal split`: [1] install new node [2] truncate the prefix (change both prefix and its length in single atomic store)
     - [ ] `compaction`
 ## Future Works
 - [ ] Test methods and perhaps a benchmark
@@ -55,3 +58,8 @@ Indexing system for heterogeneous storages.
     - [ ] `compaction`
 - [ ] IO device version: storage and optimization
 - [ ] Intelligent storage
+
+## Codes Borrowed / Adapted
+- Murmur3 from https://github.com/PeterScott/murmur3
+- ART from https://github.com/armon/libart
+- EBR GC from https://github.com/rmind/libqsbr

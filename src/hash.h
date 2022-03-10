@@ -3,7 +3,7 @@
 #include "common.h"
 #include "murmur3.h"
 #include "data_sketch.h"
-
+__BEGIN_DECLS
 // --------------Hash System-----------------
 int do_nothing(const char* format, ...);
 int (*debug)(const char*, ...);
@@ -68,7 +68,7 @@ const uint8_t* delete_callback(hash_sys* h, entry* e);
 * @param h:         the INDEX system to operate on
 * @param key:       the key you wish to find in the HASH system
 * @param freq:      a pointer to store the estimated frequecy of the key.
-* @param result:    a pointer to store query's result value.
+* @param query_result:    a pointer to store query's result value.
 * @param mode:      one in [HASH_QUERY, HASH_DELETE].
 * @return 0 if key not found, otherwise non-zero value indicating key found.
 */
@@ -76,7 +76,7 @@ int hash_search(
     index_sys* h, 
     const uint8_t* key, 
     int* freq, 
-    uint64_t* result, 
+    uint64_t* query_result, 
     int mode
 );
 #define hash_query(i, key, freq, res) hash_search((i), (key), (freq), (res), HASH_QUERY)
@@ -108,5 +108,5 @@ int hash_expand_reinsert(hash_sys** h_ptr);
  * @return the load factor.
  */
 double load_factor(hash_sys* h);
-
+__END_DECLS
 #endif // HASH_H

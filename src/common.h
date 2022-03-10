@@ -6,7 +6,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdarg.h>
-
+__BEGIN_DECLS
 #define MEM_TYPE 1
 #define SSD_TYPE 2
 #define HDD_TYPE 3
@@ -18,17 +18,7 @@ typedef struct entry{
     uint8_t _Alignas(16) key[KEY_LEN];
     uint8_t value[VAL_LEN];
 } entry;
-// ------------- SPECIAL KEY VALUES -----------------
-#define EMPTY_FLAG 0
-#define OCCUPIED_FLAG 1
-#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
-#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
-#define IS_OCCUPIED(key) ((*(uint64_t*)(key) == 1)
-#define IS_EMPTY(key) ((*(uint64_t*)(key) == 0)
-// ------------- FUNCTIONALITY SWITCHES -------------
-#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
-#define SDR_FLOAT 1 // To disable ART update & search smart replacing FLOAT, just undef this. 
-#define COMPACT 1 // To disable index COMPACT, just undef this.
+
 // ------------------- HASH.H ---------------------
 #define BIN_CAPACITY 8
 
@@ -130,10 +120,22 @@ typedef struct index_sys{
     hash_sys* hash;
     art_tree* tree;
 } index_sys;
-
-int debug_count;
-
-// We want to be more certain 
-#define EST_SCALE 1.02 
-#define EST_DIFF 0 // For now we set to 0 for test.
+// ------------- SPECIAL KEY VALUES -----------------
+#define EMPTY_FLAG 0
+#define OCCUPIED_FLAG 1
+#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
+#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
+#define IS_OCCUPIED(key) ((*(uint64_t*)(key) == 1)
+#define IS_EMPTY(key) ((*(uint64_t*)(key) == 0)
+// ------------- FUNCTIONALITY SWITCHES -------------
+// Note that you can disable ART buffer by undef-ing BUF_LEN, which should be somewhere above ;) 
+#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
+#define SDR_FLOAT 1 // To disable ART update & search smart replacing FLOAT, just undef this. 
+#define COMPACT 1 // To disable index COMPACT, just undef this.
+// ------------------- PARAMETERS -------------------
+#define EST_SCALE 1.02 // We want to be more certain when comparing ESTIMATED frequency and prevent jittering.
+#define EST_DIFF 0 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
+#define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
+#define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
+__END_DECLS
 #endif // COMMON_H
