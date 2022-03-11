@@ -19,6 +19,31 @@ typedef struct entry{
     uint8_t value[VAL_LEN];
 } entry;
 
+// ------------- SPECIAL KEY VALUES -----------------
+#define EMPTY_FLAG 0
+#define OCCUPIED_FLAG 1
+#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
+#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
+#define IS_OCCUPIED(key) ((*(uint64_t*)(key) == 1)
+#define IS_EMPTY(key) ((*(uint64_t*)(key) == 0)
+
+// ------------- FUNCTIONALITY SWITCHES -------------
+// Note that you can disable ART buffer by undef-ing BUF_LEN, which should be somewhere above ;) 
+#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
+
+#define SDR_FLOAT 1 // Float mode: 0 = disabled, 1 = INB only, 2 = leaf nodes only, 3 = all
+
+#define COMPACT 1 // To disable index COMPACT, just undef this.
+
+#define COUNTMIN_CD_FACTOR 0.95 // To disable Count-Min cooldown, disable either of these
+// #define COUNTMIN_CD_INTERVAL 100
+
+// ------------------- PARAMETERS -------------------
+#define EST_SCALE 1.02 // We want to be more certain when comparing ESTIMATED frequency and prevent jittering.
+#define EST_DIFF 0 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
+#define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
+#define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
+
 // ------------------- HASH.H ---------------------
 #define BIN_CAPACITY 8
 
@@ -96,12 +121,12 @@ typedef struct art_node256{
  * Represents a leaf. These are
  * of arbitrary size, as they include the key.
  */
-typedef struct art_leaf{
-    uint8_t value[VAL_LEN];
-    uint32_t key_len;
-    unsigned char key[];
-} art_leaf;
-
+// typedef struct art_leaf{
+//     uint8_t value[VAL_LEN];
+//     uint32_t key_len;
+//     unsigned char key[];
+// } art_leaf;
+typedef entry art_leaf;
 /**
  * Main struct, points to root.
  */
@@ -110,9 +135,18 @@ typedef struct art_tree{
     uint64_t size;
     uint64_t buffer_count;
 } art_tree;
+// ------------------ DATA_SKETCH.H -----------------
+typedef struct data_sketch {
+    uint32_t width, depth;
+    uint32_t seed;
+    uint32_t shift;
+    #if defined(COUNTMIN_CD_FACTOR) && defined(COUNTMIN_CD_INTERVAL)
+    uint32_t cd_countdown;
+    #endif
+    uint32_t *counts;
+} sketch;
 
 // ------------------- HETERO.H ---------------------
-#include "data_sketch.h"
 
 typedef struct index_sys{
     uint8_t has_special_key[2], special_key_val[2][VAL_LEN];
@@ -120,22 +154,6 @@ typedef struct index_sys{
     hash_sys* hash;
     art_tree* tree;
 } index_sys;
-// ------------- SPECIAL KEY VALUES -----------------
-#define EMPTY_FLAG 0
-#define OCCUPIED_FLAG 1
-#define IS_SPECIAL_KEY(key) ((*(uint64_t*)key & ~1) == 0)
-#define IS_SPECIAL_KEY_U64(key) ((key & ~1) == 0)
-#define IS_OCCUPIED(key) ((*(uint64_t*)(key) == 1)
-#define IS_EMPTY(key) ((*(uint64_t*)(key) == 0)
-// ------------- FUNCTIONALITY SWITCHES -------------
-// Note that you can disable ART buffer by undef-ing BUF_LEN, which should be somewhere above ;) 
-#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
-#define SDR_FLOAT 1 // To disable ART update & search smart replacing FLOAT, just undef this. 
-#define COMPACT 1 // To disable index COMPACT, just undef this.
-// ------------------- PARAMETERS -------------------
-#define EST_SCALE 1.02 // We want to be more certain when comparing ESTIMATED frequency and prevent jittering.
-#define EST_DIFF 0 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
-#define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
-#define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
+
 __END_DECLS
 #endif // COMMON_H

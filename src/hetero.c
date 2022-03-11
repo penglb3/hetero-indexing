@@ -64,7 +64,7 @@ int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
     int freq = 0;
     if(hash_query(index, key, &freq, query_result)) 
         return 0;
-    return !art_search(index->tree, key, freq, query_result, index->cm);
+    return !art_search(index, key, freq, query_result);
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
@@ -76,7 +76,7 @@ int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
     int freq;
     int status = hash_update(index, key, value, &freq);
     if(status == ELEMENT_NOT_FOUND){
-        return art_update(index->tree, key, freq, (void*)value, index->cm) == NULL;
+        return art_update(index, key, freq, (void*)value) == NULL;
     }
     return 0;
 }
@@ -103,7 +103,7 @@ int index_compact(index_sys* index, double max_load_factor){
     debug("\n[Debug] Refill starts with load factor %.3lf, [H]%lu+[TB]%lu: ", load_factor(index->hash), index->hash->count, index->tree->buffer_count);
     queue* q = queue_construct(index->hash->size >> 4);
     art_node* n = index->tree->root, **children, *c;
-    int error, continuous_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
+    int error, consecutive_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
     queue_push(q, n);
     #ifdef COMPACT
     while(!queue_empty(q)){
@@ -111,13 +111,13 @@ int index_compact(index_sys* index, double max_load_factor){
         if(is_leaf(n)) continue; // IS LEAF
         for(int i = 0; i < BUF_LEN; i++){
             if(!IS_SPECIAL_KEY(n->buffer[i].key)){
-                if(continuous_failure < 3 && load_factor(index->hash) < max_load_factor){
+                if(consecutive_failure < 3 && load_factor(index->hash) < max_load_factor){
                     error = hash_insert_nocheck(index->hash, n->buffer[i].key, n->buffer[i].value);
                     if (!error){
-                        continuous_failure = 0;
+                        consecutive_failure = 0;
                         goto CLEAR_BUFFER;
                     }
-                    continuous_failure++;
+                    consecutive_failure++;
                 }
                 error = art_insert_no_replace(index->tree, n->buffer[i].key, KEY_LEN | MEM_TYPE, n->buffer[i].value) != NULL;
                 CLEAR_BUFFER:;
@@ -150,7 +150,7 @@ int index_compact(index_sys* index, double max_load_factor){
     }
     #endif // COMPACT
     queue_destruct(q);
-    debug("[CF]%d [Hash Fill]%d\n", continuous_failure, index->hash->count - cnt);
+    debug("[CF]%d [Hash Fill]%d\n", consecutive_failure, index->hash->count - cnt);
     return 0;
 }
 

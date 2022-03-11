@@ -36,3 +36,4 @@ util_test
 .vscode/
 cachegrind.*
 callgrind.*
+.deps/

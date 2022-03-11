@@ -42,11 +42,26 @@ static inline uint32_t min(uint32_t a, uint32_t b){
     return a <= b ? a : b;
 }
 
+#if defined(COUNTMIN_CD_FACTOR) && defined(COUNTMIN_CD_INTERVAL)
+static void countmin_cooldown(sketch* cm){
+    for(int i=0; i<cm->depth*cm->width; i++){
+        cm->counts[i] *= CD_FACTOR;
+    }
+}
+#endif
+
 int countmin_inc_explicit(sketch* cm, const void* data, uint32_t len, void* ext_hash){
     uint32_t idx, minimal = UINT32_MAX, tot_shift = 0;
     uint64_t hash[2];
     if(IS_SPECIAL_KEY(data)) // For special key, especially OCCUPIED_FLAG, 
         return INT32_MAX; // We don't want caller to move them down, so return INT_MAX
+    #if defined(COUNTMIN_CD_FACTOR) && defined(COUNTMIN_CD_INTERVAL)
+    cm->cd_countdown++;
+    if(cm->cd_countdown == CD_INTERVAL){
+        cm->cd_countdown = 0;
+        countmin_cooldown(cm);
+    }
+    #endif
     if(!ext_hash)
         MurmurHash3_x64_128(data, len, cm->seed, hash);
     else 

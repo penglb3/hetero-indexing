@@ -36,7 +36,8 @@ Indexing system for heterogeneous storages.
   - [x] One hash computation for multiple lines - chop 128 bit hash value into several.
   - [x] Sharing hash computation for hash table and Count-Min.
 - [x] Implement index compact: hash refill + buffer lifting. 
-- [x] Smart data placing schedule. 
+- [x] Smart data placing schedule (SINK, FLOAT). 
+- [x] Count-Min Auto cooldown.
 - [ ] Concurrency on DRAM:
   - [x] Hash
   - [ ] ART: will use ROWEX

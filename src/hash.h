@@ -39,7 +39,7 @@ void hash_destruct(hash_sys* h);
 * @param mode:    one in [INSERT, UPDATE, STRICT_INSERT, STRICT_UPDATE], 
                 (strict insert means you don't allow inplace update when the key exists, 
                  while the non-strict one does.)
-* @return a int indicating the outcome.
+* @return a int indicating the outcome. 0 = success, non-zero otherwise
 */
 int hash_modify(index_sys* h, const uint8_t* key, const uint8_t* value, int* freq, int mode);
 #define hash_insert(h, k, v) hash_modify((h), (k), (v), NULL, INSERT)

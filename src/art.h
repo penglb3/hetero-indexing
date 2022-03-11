@@ -80,7 +80,7 @@ void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, 
 
 /**
  * Searches for a value in the ART tree, update it inplace and returns old value
- * @param t The tree
+ * @param t The index system
  * @param key The key
  * @param freq Estimated frequency of the key to query. 
  *              This parameter will be used to weight the importance of the data and place the data in INB accordingly, 
@@ -91,7 +91,7 @@ void* art_insert_no_replace(art_tree *t, const unsigned char *key, int key_len, 
  * @return NULL if the item was not found, otherwise
  * the value pointer is returned.
  */
-void* art_update(art_tree *t, const unsigned char *key, const int freq, void* value, sketch* cm);
+void* art_update(index_sys *ind, const unsigned char *key, const int freq, void* value);
 
 /**
  * Deletes a value from the ART tree
@@ -105,7 +105,7 @@ void* art_delete(art_tree *t, const unsigned char *key, int key_len);
 
 /**
  * Searches for a value in the ART tree
- * @param t The tree
+ * @param ind The index system
  * @param key The key
  * @param freq Estimated frequency of the key to query. 
  *              This parameter will be used to weight the importance of the data and place the data in INB accordingly, 
@@ -116,7 +116,7 @@ void* art_delete(art_tree *t, const unsigned char *key, int key_len);
  * @return 1 if the item was found, 0 otherwise
  * the value pointer is returned.
  */
-int art_search(art_tree *t, const unsigned char *key, const int freq, uint64_t* query_result, sketch* cm);
+int art_search(index_sys *ind, const unsigned char *key, const int freq, uint64_t* query_result);
 
 /**
  * Returns the minimum valued leaf

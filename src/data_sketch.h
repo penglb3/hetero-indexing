@@ -1,13 +1,11 @@
 #ifndef DATA_SKETCH_H
 #define DATA_SKETCH_H
 #include <stdint.h>
+#include "common.h"
 __BEGIN_DECLS
-typedef struct data_sketch {
-    uint32_t width, depth;
-    uint32_t seed;
-    uint32_t shift;
-    uint32_t *counts;
-} sketch;
+
+#define CD_FACTOR 0.95
+#define CD_INTERVAL 100
 
 #define COUNT_MIN 1
 #define BLOOM_FILTER 2
