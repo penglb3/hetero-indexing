@@ -7,9 +7,6 @@
 __BEGIN_DECLS
 // --------------Index System-----------------
 #define CM_DEPTH 6
-#define CM_WIDTH 1 << 16
-#define MEMB_WIDTH (1 << 13)
-#define MEMB_DEPTH 7
 
 #define MAX_TREE_HASH_RATIO 5
 

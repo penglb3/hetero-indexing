@@ -5,7 +5,7 @@ DEPFLAGS = -MMD -MP -MT $@ -MF $(DEPDIR)/$*.d
 
 EXEC := hetero
 UTEST := util_test
-OBJS := test.o hetero.o murmur3.o art.o data_sketch.o hash.o queue.o ebr.o gc.o
+OBJS := test.o hetero.o murmur3.o art.o data_sketch.o hash.o queue.o
 DEPDIR := .deps
 DEPFILES := $(OBJS:%.o=$(DEPDIR)/%.d)
 

@@ -38,6 +38,7 @@ Indexing system for heterogeneous storages.
 - [x] Implement index compact: hash refill + buffer lifting. 
 - [x] Smart data placing schedule (SINK, FLOAT). 
 - [x] Count-Min Auto cooldown.
+- [ ] Optimize CMS usage to make query faster (than insert, presumably).
 - [ ] Concurrency on DRAM:
   - [x] Hash
   - [ ] ART: will use ROWEX

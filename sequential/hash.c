@@ -65,7 +65,7 @@ int hash_expand_copy(hash_sys** hash_ptr){
         }
     }
     new_h->count = hash_s->count;
-    atomic_store(hash_ptr, new_h);
+    *hash_ptr = new_h;
     hash_destruct(hash_s);
     return 0;
 };
@@ -80,7 +80,7 @@ int hash_expand_reinsert(hash_sys** hash_ptr){
                 hash_insert_nocheck_nosafe(new_h, curr->data[j].key, curr->data[j].value);
         }
     }
-    atomic_store(hash_ptr, new_h);
+    *hash_ptr = new_h;
     hash_destruct(hash_s);
     return 0;
 };
@@ -102,7 +102,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
             if(mode == STRICT_INSERT) // Inplace update not allowed in strict insert.
                 return ELEMENT_ALREADY_EXISTS;
             // Inplace update and exit.
-            atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
+            *(uint64_t*)target->data[j].value = *(uint64_t*)value;
             return 0;
         }
         if(key_h == EMPTY_FLAG && available == -1)
@@ -127,28 +127,19 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
     // If there is an empty slot, then try insert. 
     if(available != -1)
         for(j = available; j < BIN_CAPACITY; j++){
-            comp = EMPTY_FLAG;
-            if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &comp, OCCUPIED_FLAG)){
-                atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
-                atomic_store((uint64_t*)target->data[j].key, key_i64);
-                atomic_fetch_add(& hash_s->count, 1);
-                return 0;
-            }
+            *(uint64_t*)target->data[j].value = *(uint64_t*)value;
+            *(uint64_t*)target->data[j].key = key_i64;
+            hash_s->count ++;
+            return 0;
         }
     else if(i_min != -1){ // No empty slot, but we do have an key_lru (that means we are to UPDATE)
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, &key_lru, OCCUPIED_FLAG)){
-            // No one's gonna use h[] now, feel free to use it!
-            h[0] = atomic_exchange((uint64_t*)target->data[i_min].value, *(uint64_t*)value);
-            h[1] = OCCUPIED_FLAG; 
-            if(atomic_compare_exchange_strong((uint64_t*)target->data[i_min].key, h+1, key_i64)){
-                // Since we have the key in the system, but not in hash table, then it must be in ART
-                art_delete(ind->tree, key, KEY_LEN);
-                // Now put key_lru in ART.
-                art_insert_no_replace(ind->tree, (void*)&key_lru, KEY_LEN | MEM_TYPE, (void*)h);
-                return 0;
-            }
-            return -1; // Normally this shouldn't happen.
-        }
+        // Now put key_lru in ART.
+        art_insert_no_replace(ind->tree, target->data[i_min].key, MEM_TYPE, (void*)target->data[i_min].value);
+        // Since we have the key in the system, but not in hash table, then it must be in ART
+        art_delete(ind->tree, key, KEY_LEN);
+        *(uint64_t*)target->data[i_min].value = *(uint64_t*)value;
+        *(uint64_t*)target->data[i_min].key = key_i64;
+        return 0;
     }
     return HASH_BIN_FULL;
 }
@@ -159,22 +150,19 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
     int j = 0;
     for(j = 0; j < BIN_CAPACITY; j++){
         empty = EMPTY_FLAG;
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &empty, OCCUPIED_FLAG)){
-            atomic_store((uint64_t*)target->data[j].value, *(uint64_t*)value);
-            atomic_store((uint64_t*)target->data[j].key, *(uint64_t*)key);
-            atomic_fetch_add(& hash_s->count, 1);
+        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &empty, key_i64)){
+            *(uint64_t*)target->data[j].value = *(uint64_t*)value;
+            hash_s->count ++;
             return 0;
         }
     }
     return HASH_BIN_FULL;
 }
 
-int hash_search(index_sys* ind, const uint8_t* key, int* freq, uint64_t* query_result, int mode){
+int hash_search(index_sys* ind, const uint8_t* key, uint64_t* h, uint64_t* query_result, int mode){
     hash_sys* hash_s = ind->hash;
-    uint64_t key_i64 = *(uint64_t*)key, h[2];
+    uint64_t key_i64 = *(uint64_t*)key;
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
-    if(mode == HASH_QUERY && freq)
-        *freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     for(int j=0; j<BIN_CAPACITY; j++){
         if(atomic_load((uint64_t*)target->data[j].key) == key_i64){
@@ -182,8 +170,9 @@ int hash_search(index_sys* ind, const uint8_t* key, int* freq, uint64_t* query_r
                 *query_result = atomic_load((uint64_t*)target->data[j].value);
                 return atomic_load((uint64_t*)target->data[j].key) == key_i64;
             }
-            else if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &key_i64, EMPTY_FLAG)){
-                atomic_fetch_sub(& hash_s->count, 1);
+            else {
+                *(uint64_t*)target->data[j].key = EMPTY_FLAG;
+                hash_s->count --;
                 return 1;
             }
             return 0;
@@ -198,7 +187,7 @@ const uint8_t* query_callback(hash_sys *h, entry* e){
 #endif
 #ifndef HASH_DELETE
 const uint8_t* delete_callback(hash_sys *h, entry* e){
-    atomic_store((uint64_t*)e->key, 0);
+    *(uint64_t*)e->key = 0;
     atomic_fetch_sub(& h->count, 1);
     return (void*)0x1;
 }

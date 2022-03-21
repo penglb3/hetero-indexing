@@ -31,8 +31,8 @@ void index_destruct(index_sys* index){
 int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int storage_type){
     int status;
     if(IS_SPECIAL_KEY(key)){
-        atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
-        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
+        *(uint64_t*)(index->special_key_val + *(uint64_t*)key) = *(uint64_t*)value;
+        *(index->has_special_key + *(uint64_t*)key) = OCCUPIED_FLAG;
         return 0;
     }
     if(storage_type == MEM_TYPE){
@@ -61,16 +61,23 @@ int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
         else
             return 1;
     }
-    int freq = 0;
-    if(hash_query(index, key, &freq, query_result)) 
+    uint64_t h[2];
+    int freq;
+    if(hash_query(index, key, h, query_result)){
+        countmin_inc_explicit(index->cm, key, KEY_LEN, h);
         return 0;
-    return !art_search(index, key, freq, query_result);
+    }
+    if(art_search(index, key, h, query_result)){
+        countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+        return 0;
+    }
+    return 1;
 }
 
 int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
     if(IS_SPECIAL_KEY(key)){
-        atomic_store((uint64_t*)(index->special_key_val + *(uint64_t*)key), *(uint64_t*)value);
-        atomic_store(index->has_special_key + *(uint64_t*)key, 1);
+        *(uint64_t*)(index->special_key_val + *(uint64_t*)key) = *(uint64_t*)value;
+        *(index->has_special_key + *(uint64_t*)key) = OCCUPIED_FLAG;
         return 0;
     }
     int freq;
@@ -84,9 +91,10 @@ int index_update(index_sys* index, const uint8_t* key, const uint8_t* value){
 int index_delete(index_sys* index, const uint8_t* key){
     if(IS_SPECIAL_KEY(key)){
         uint8_t s = 1;
-        return !atomic_compare_exchange_strong(index->has_special_key + *(uint64_t*)key, &s, 0);
+        return !atomic_compare_exchange_strong(index->has_special_key + *(uint64_t*)key, &s, EMPTY_FLAG);
     }
-    int found = hash_delete(index, key);
+    uint64_t h[2];
+    int found = hash_delete(index, key, h);
     if(!found){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }

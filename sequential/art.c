@@ -288,27 +288,27 @@ static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, ar
     if(!ref_parent){
         if(hash_insert_nocheck(ind->hash, key, update_value ? update_value : (const uint8_t*)value_ptr))
             return 0;
-        atomic_store(key_ptr, EMPTY_FLAG);
+        *key_ptr = EMPTY_FLAG;
         if(!IS_LEAF(n))
             delta_bcount = 1;
         else
             delta_bcount = remove_child(ind->tree->root, & ind->tree->root, key[depth_parent], ref_n, depth_parent);
         if(delta_bcount)
-            atomic_fetch_sub(& ind->tree->buffer_count, delta_bcount);
-        atomic_fetch_sub(& ind->tree->size, 1);
+            ind->tree->buffer_count -= delta_bcount;
+        ind->tree->size --;
         return FLOAT_RESULT_ROOT;
     }
     parent = *ref_parent;
     for(int j=0; freq && j<BUF_LEN; j++){
         key_i = atomic_load((uint64_t*)parent->buffer[j].key);
-        if(key_i == EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)parent->buffer[j].key, &key_i, OCCUPIED_FLAG)){
-            atomic_store((uint64_t*)parent->buffer[j].value, VALUE_TO_STORE(update_value, value_ptr));
-            atomic_store((uint64_t*)parent->buffer[j].key, *(uint64_t*)key);
-            atomic_store(key_ptr, EMPTY_FLAG);
+        if(key_i == EMPTY_FLAG){
+            *(uint64_t*)parent->buffer[j].value = VALUE_TO_STORE(update_value, value_ptr);
+            *(uint64_t*)parent->buffer[j].key = *(uint64_t*)key;
+            *key_ptr = EMPTY_FLAG;
             if(IS_LEAF(n)){
                 delta_bcount = remove_child(parent, ref_parent, key[depth_parent], ref_n, depth_parent);
                 if(1 - delta_bcount)
-                    atomic_fetch_add(& ind->tree->buffer_count, 1 - delta_bcount);
+                    ind->tree->buffer_count += 1 - delta_bcount;
             }
             return FLOAT_RESULT_MOVE;
         }
@@ -322,11 +322,11 @@ static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, ar
             break;
         }
     }
-    if(key_lru != EMPTY_FLAG && atomic_compare_exchange_strong((uint64_t*)entry_lru->key, &key_lru, OCCUPIED_FLAG)){  
+    if(key_lru != EMPTY_FLAG){  
         if(memcmp(key + depth_parent, (uint8_t*)&key_lru + depth_parent, depth - depth_parent)) { // Have to reinsert
             val = atomic_exchange((uint64_t*)entry_lru->value, VALUE_TO_STORE(update_value, value_ptr));
-            atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
-            atomic_store(key_ptr, EMPTY_FLAG);
+            *(uint64_t*)entry_lru->key = *(uint64_t*)key;
+            *key_ptr = EMPTY_FLAG;
             if(IS_LEAF(n))
                 delta_bcount = remove_child(parent, ref_parent, key[depth_parent], ref_n, depth_parent);
             f = 0;
@@ -334,25 +334,24 @@ static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, ar
             recursive_insert(*ref_parent, ref_parent, (uint8_t*)&key_lru, KEY_LEN | MEM_TYPE, (void*)&val, depth_parent, &f, 0);
             delta_bcount = INSERT_IS_IN_BUFFER(f) - !IS_LEAF(n) - delta_bcount;
             if(delta_bcount)
-                atomic_fetch_add(& ind->tree->buffer_count, delta_bcount);
+                ind->tree->buffer_count += delta_bcount;
             return FLOAT_RESULT_REINSERT;
         }
         else{ // key_lru and key match, so we can directly swap both of them.
-            atomic_store(key_ptr, OCCUPIED_FLAG);
             val = atomic_exchange((uint64_t*)entry_lru->value, VALUE_TO_STORE(update_value, value_ptr));
-            atomic_store((uint64_t*)entry_lru->key, *(uint64_t*)key);
-            atomic_store(value_ptr, val);
-            atomic_store(key_ptr, key_lru);
+            *(uint64_t*)entry_lru->key = *(uint64_t*)key;
+            *value_ptr = val;
+            *key_ptr = key_lru;
             return FLOAT_RESULT_SWAP;
         }
     }
     return 0;
 };
 
-int art_search(index_sys *ind, const unsigned char *key, const int freq, uint64_t* query_result) {
+int art_search(index_sys *ind, const unsigned char *key, uint64_t* h, uint64_t* query_result) {
     art_node **child = & ind->tree->root, **ref_parent = NULL;
     art_node *n = ind->tree->root, *parent = NULL;
-    int prefix_len, depth = 0, depth_parent = 0, f;
+    int prefix_len, depth = 0, depth_parent = 0, freq;
     while (n) {
         // Might be a leaf
         if (IS_LEAF(n)) {
@@ -361,6 +360,7 @@ int art_search(index_sys *ind, const unsigned char *key, const int freq, uint64_
             if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 *query_result = atomic_load((uint64_t*)((art_leaf*)n)->value);
                 #if SDR_FLOAT & 2
+                freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
                 art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, NULL);
                 #endif // SDR_FLOAT_LEAF
                 return 1;
@@ -381,6 +381,7 @@ int art_search(index_sys *ind, const unsigned char *key, const int freq, uint64_
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 *query_result = atomic_load((uint64_t*)n->buffer[i].value);
                 #if SDR_FLOAT & 1
+                freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
                 art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, NULL);
                 #endif // SDR_FLOAT
                 return 1;
@@ -435,7 +436,7 @@ void* art_update(index_sys *ind, const unsigned char *key, const int freq, void*
                     return old;
                 }
                 #endif
-                atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
+                *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
                 return old;
             }
         }
@@ -710,7 +711,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
     uint64_t comp;
     // If we are at a NULL node, inject a leaf
     if (!n) {
-        atomic_store(ref, (art_node*)SET_LEAF(make_leaf(key, key_len, value)));
+        *ref = (art_node*)SET_LEAF(make_leaf(key, key_len, value));
         return NULL;
     }
 
@@ -722,7 +723,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         if (!leaf_matches(l, key, key_len, depth)) {
             *old = INSERT_FOUND_KEY_FLAG;
             void *old_val = l->value;
-            if(replace) atomic_store((uint64_t*)l->value, *(uint64_t*)value);
+            if(replace) *(uint64_t*)l->value = *(uint64_t*)value;
             return old_val;
         }
 
@@ -739,7 +740,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         // Add the leafs to the new node4
         add_child4(new_node, ref, l->key[depth+longest_prefix], SET_LEAF(l));
         add_child4(new_node, ref, l2->key[depth+longest_prefix], SET_LEAF(l2));
-        atomic_store(ref, (art_node*)new_node);
+        *ref = (art_node*)new_node;
         return NULL;
     }
 
@@ -753,7 +754,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
             if(atomic_load((uint64_t*)n->buffer[i].key)==*(uint64_t*)key){
                 void *old_val = n->buffer[i].value;
                 *old = INSERT_FOUND_KEY_FLAG;
-                if(replace) atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
+                if(replace) *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
                 return old_val;
             }
         }
@@ -761,7 +762,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
             for(int i=z; i<BUF_LEN; i++){
                 comp = 0;
                 if(atomic_compare_exchange_strong((uint64_t*)n->buffer[i].key, &comp, *(uint64_t*)key)){
-                    atomic_store((uint64_t*)n->buffer[i].value, *(uint64_t*)value);
+                    *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
                     *old = INSERT_IS_IN_BUFFER_FLAG;
                     return NULL;
                 }
@@ -805,7 +806,7 @@ static void* recursive_insert(art_node *n, art_node **ref, const unsigned char *
         // Insert the new leaf
         art_leaf *l = make_leaf(key, key_len, value);
         add_child4(new_node, (art_node**)&new_node, key[depth+prefix_diff], SET_LEAF(l));
-        atomic_store(ref, (art_node*)new_node);
+        *ref = (art_node*)new_node;
         return NULL;
     }
 
@@ -1000,7 +1001,7 @@ static void* recursive_delete(art_node *n, art_node **ref, const unsigned char *
     // Don't go down so soon yet! let's check the buffer!
     for(int i=0; i<BUF_LEN; i++){
         if(*(uint64_t*)n->buffer[i].key == *(uint64_t*)key){
-            atomic_store((uint64_t*)n->buffer[i].key, EMPTY_FLAG);
+            *(uint64_t*)n->buffer[i].key = EMPTY_FLAG;
             return (void*)((uintptr_t)n->buffer[i].value | 1);
         }
     }

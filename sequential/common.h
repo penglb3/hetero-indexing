@@ -37,12 +37,12 @@ typedef struct entry{
 
 #define COMPACT 1 // To disable index COMPACT, just undef this.
 
-#define COUNTMIN_CD_FACTOR 0.95 // To disable Count-Min cooldown, disable either of these
-// #define COUNTMIN_CD_INTERVAL 100
+// #define COUNTMIN_CD_FACTOR 0.99 // To disable Count-Min cooldown, disable either of these
+// #define COUNTMIN_CD_INTERVAL 200
 
 // ------------------- PARAMETERS -------------------
-#define EST_SCALE 1.02 // We want to be more certain when comparing ESTIMATED frequency and prevent jittering.
-#define EST_DIFF 0 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
+#define EST_SCALE 1.05 // We want to be more certain when comparing ESTIMATED frequency and prevent jittering.
+#define EST_DIFF 10 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
 #define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
 #define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
 
