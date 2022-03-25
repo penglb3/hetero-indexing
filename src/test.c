@@ -37,8 +37,8 @@ int main(int argc, char* argv[]){
     double load_factor = -1;
     debug = do_nothing;
     hash_expand = hash_expand_copy;
-    while((error = getopt(argc, argv, "s:n:di:rf:"))!=-1)
-        switch(error){
+    while((status = getopt(argc, argv, "s:n:di:rf:"))!=-1)
+        switch(status){
             case 'i': seed = atoi(optarg); break;
             case 's': size = 1<<atoi(optarg);break;
             case 'n': num_entries = atoll(optarg);break;

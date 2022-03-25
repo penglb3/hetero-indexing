@@ -6,7 +6,9 @@
 #include <string.h>
 #include <time.h>
 #include <stdarg.h>
+#include <stdalign.h>
 __BEGIN_DECLS
+#define IO_TYPE 0
 #define MEM_TYPE 1
 #define SSD_TYPE 2
 #define HDD_TYPE 3
@@ -15,7 +17,7 @@ __BEGIN_DECLS
 #define VAL_LEN 8
 
 typedef struct entry{
-    uint8_t _Alignas(16) key[KEY_LEN];
+    alignas(16) uint8_t key[KEY_LEN];
     uint8_t value[VAL_LEN];
 } entry;
 
