@@ -143,6 +143,13 @@ uint64_t MurmurHash3_x64_64 ( const void * key, const int len,
 
   return h2; 
 }
+
+void MurmurHash3_x64_128_null ( const void * key, const int len,
+                           const uint32_t seed, void* out){
+  ((uint64_t*)out)[0] = *(uint64_t*)key;
+  ((uint64_t*)out)[1] = *(uint64_t*)key;
+}                           
+
 void MurmurHash3_x64_128 ( const void * key, const int len,
                            const uint32_t seed, void* out)
 {

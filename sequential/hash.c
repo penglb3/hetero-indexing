@@ -49,7 +49,7 @@ hash_sys* hash_construct(uint64_t size, uint32_t seed){
 }
 
 int hash_expand_copy(hash_sys** hash_ptr){
-    hash_sys* hash_s = atomic_load(hash_ptr), *new_h = hash_construct(hash_s->size * 2, hash_s->seed);
+    hash_sys* hash_s = *(hash_ptr), *new_h = hash_construct(hash_s->size * 2, hash_s->seed);
     bin* curr, *new_entries = new_h->entries;
     memcpy(new_entries, hash_s->entries, hash_s->size*sizeof(bin));
     // memcpy(new_entries + hash_s->size, hash_s->entries, hash_s->size*sizeof(bin));
@@ -71,7 +71,7 @@ int hash_expand_copy(hash_sys** hash_ptr){
 };
 
 int hash_expand_reinsert(hash_sys** hash_ptr){
-    hash_sys* hash_s = atomic_load(hash_ptr), *new_h = hash_construct(hash_s->size*2, hash_s->seed);
+    hash_sys* hash_s = *(hash_ptr), *new_h = hash_construct(hash_s->size*2, hash_s->seed);
     bin* curr;
     for (uint64_t i = 0; i < hash_s->size; i++){
         curr = hash_s->entries + i;
@@ -97,7 +97,7 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
         *freq = min_cnt;
     #endif
     for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
-        key_h = atomic_load((uint64_t*)target->data[j].key);
+        key_h = *((uint64_t*)target->data[j].key);
         if(key_h == key_i64){ // FOUND the key!
             if(mode == STRICT_INSERT) // Inplace update not allowed in strict insert.
                 return ELEMENT_ALREADY_EXISTS;
@@ -150,7 +150,8 @@ int hash_insert_nocheck(hash_sys* hash_s, const uint8_t* key, const uint8_t* val
     int j = 0;
     for(j = 0; j < BIN_CAPACITY; j++){
         empty = EMPTY_FLAG;
-        if(atomic_compare_exchange_strong((uint64_t*)target->data[j].key, &empty, key_i64)){
+        if((uint64_t*)target->data[j].key == EMPTY_FLAG){
+            *(uint64_t*)target->data[j].key = key_i64;
             *(uint64_t*)target->data[j].value = *(uint64_t*)value;
             hash_s->count ++;
             return 0;
@@ -165,10 +166,10 @@ int hash_search(index_sys* ind, const uint8_t* key, uint64_t* h, uint64_t* query
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     for(int j=0; j<BIN_CAPACITY; j++){
-        if(atomic_load((uint64_t*)target->data[j].key) == key_i64){
+        if(*((uint64_t*)target->data[j].key) == key_i64){
             if(mode == HASH_QUERY){
-                *query_result = atomic_load((uint64_t*)target->data[j].value);
-                return atomic_load((uint64_t*)target->data[j].key) == key_i64;
+                *query_result = *((uint64_t*)target->data[j].value);
+                return 1;
             }
             else {
                 *(uint64_t*)target->data[j].key = EMPTY_FLAG;
@@ -180,18 +181,7 @@ int hash_search(index_sys* ind, const uint8_t* key, uint64_t* h, uint64_t* query
     }
     return 0;
 }
-#ifndef HASH_QUERY
-const uint8_t* query_callback(hash_sys *h, entry* e){
-    return e->value;
-}
-#endif
-#ifndef HASH_DELETE
-const uint8_t* delete_callback(hash_sys *h, entry* e){
-    *(uint64_t*)e->key = 0;
-    atomic_fetch_sub(& h->count, 1);
-    return (void*)0x1;
-}
-#endif
+
 double load_factor(hash_sys* h){
     return (double)h->count * BIN_CAPACITY / h->size;
 }

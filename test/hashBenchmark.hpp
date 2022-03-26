@@ -366,7 +366,7 @@ public:
                     std::cout << "Warning : Unknown OP : " << op_string << " " << hash_key << std::endl;
                     continue;
                 }
-                load_ops.push_back(operation_t{op_type, hash_key, hash_key,});
+                load_ops.push_back(operation_t{op_type, hash_key, hash_key, info});
             }
 
             // run

@@ -31,10 +31,13 @@
 *.out
 *.app
 
+hetero_test
 hetero
-hetero_*
 util_test
 .vscode/
 cachegrind.*
 callgrind.*
 .deps/
+*.log.*
+*.tmp
+*.test

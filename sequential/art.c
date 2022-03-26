@@ -277,6 +277,7 @@ static inline double max(double a, double b){
  * @param update_value The value to update. Pass NULL to use original value.
  * @return non-zero operation code if float is done successfully, 0 otherwise 
  */
+#ifdef BUF_LEN
 static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, art_node** ref_n, art_node** ref_parent, const void* update_value) {
     art_node* n = *ref_n, *parent;
     int f, delta_bcount = 0;
@@ -347,6 +348,7 @@ static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, ar
     }
     return 0;
 };
+#endif
 
 int art_search(index_sys *ind, const unsigned char *key, uint64_t* h, uint64_t* query_result) {
     art_node **child = & ind->tree->root, **ref_parent = NULL;

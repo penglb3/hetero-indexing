@@ -17,7 +17,7 @@ void test_perf(HashBenchmark & hm){
     const std::vector<operation_t>& load_ops = hm.load_ops;
     const std::vector<operation_t>& run_ops = hm.run_ops;
 
-    index_sys* ind = index_construct(1<<16, 0);
+    index_sys* ind = index_construct(1<<18, 0);
     int mem_type = 0; 
     
     hm.Start("load");
@@ -26,9 +26,6 @@ void test_perf(HashBenchmark & hm){
         switch (op.op)
         {   
             case OP_INSERT: {
-                if(op.info){
-                    mem_type ++;
-                }
                 index_insert(ind, (const uint8_t*)&op.key, (const uint8_t*)&op.value, op.info?MEM_TYPE:IO_TYPE);
                 break;
             }
@@ -40,8 +37,6 @@ void test_perf(HashBenchmark & hm){
     }
 
     hm.End();
-    if(mem_type)
-        printf(ANSI_COLOR_GREEN "[Hetero] Number of mem_types: %d\n" ANSI_COLOR_RESET, mem_type), mem_type = 0;
     hm.Print(parameters);
 
     // // run 
@@ -51,9 +46,6 @@ void test_perf(HashBenchmark & hm){
         switch (op.op)
         {
             case OP_INSERT: {
-                if(op.info){
-                    mem_type ++;
-                }
                 index_insert(ind, (const uint8_t*)&op.key, (const uint8_t*)&op.value, op.info?MEM_TYPE:IO_TYPE);
                 break;
             }
@@ -88,8 +80,6 @@ void test_perf(HashBenchmark & hm){
     }
 
     hm.End();
-    if(mem_type)
-        printf("[Hetero] Number of mem_types: %d\n", mem_type), mem_type = 0;
     hm.Print(parameters);
     return ;
 }

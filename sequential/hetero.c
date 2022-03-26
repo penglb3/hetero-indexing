@@ -54,8 +54,8 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
 
 int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
     if(IS_SPECIAL_KEY(key)){
-        if(atomic_load(index->has_special_key + *(uint64_t*)key)){
-            *query_result = atomic_load((uint64_t*)index->special_key_val[*(uint64_t*)key]);
+        if(*(index->has_special_key + *(uint64_t*)key)){
+            *query_result = *((uint64_t*)index->special_key_val[*(uint64_t*)key]);
             return 0;
         }
         else
@@ -64,11 +64,15 @@ int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
     uint64_t h[2];
     int freq;
     if(hash_query(index, key, h, query_result)){
+        #ifdef USE_CM
         countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+        #endif
         return 0;
     }
     if(art_search(index, key, h, query_result)){
+        #ifdef USE_CM
         countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+        #endif
         return 0;
     }
     return 1;
@@ -113,7 +117,7 @@ int index_compact(index_sys* index, double max_load_factor){
     art_node* n = index->tree->root, **children, *c;
     int error, consecutive_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
     queue_push(q, n);
-    #ifdef COMPACT
+    #if defined(COMPACT) && defined(BUF_LEN)
     while(!queue_empty(q)){
         n = queue_pop(q);
         if(is_leaf(n)) continue; // IS LEAF
