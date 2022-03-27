@@ -11,9 +11,9 @@ except ImportError:
 WL_PATH = '../workload' # The directory to save generated files
 YCSB_EXEC = '/home/plb/ycsb-0.17.0/bin/ycsb.sh' # The YCSB executable path
 
+MILLION = 1000000 # The unit for workload
 # [Generation properties] Change them to your need.
 workload_types = ['c']
-MILLION = 1000000 # The unit for workload
 WL_COUNTS = [{'load': 64, 'run': 64}]#{'load': 3, 'run': 3}]
 DISTRIBUTION = 'zipfian'
 OVERRIDE = False

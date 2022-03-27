@@ -34,6 +34,7 @@
 hetero_test
 hetero
 util_test
+result
 .vscode/
 cachegrind.*
 callgrind.*

@@ -17,7 +17,7 @@ void test_perf(HashBenchmark & hm){
     const std::vector<operation_t>& load_ops = hm.load_ops;
     const std::vector<operation_t>& run_ops = hm.run_ops;
 
-    index_sys* ind = index_construct(1<<18, 0);
+    index_sys* ind = index_construct(1<<17, 0);
     int mem_type = 0; 
     
     hm.Start("load");

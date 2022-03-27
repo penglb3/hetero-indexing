@@ -1,3 +1,5 @@
+# Generates device label for hetero-indexing.
+# Labeled load logs won't cause errors for other indexes, nor will they do anything.
 # %%
 from doctest import UnexpectedException
 import os

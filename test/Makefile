@@ -11,7 +11,7 @@ LEVEL_EXEC := level_hash.test
 CONTROL := unordered_map.test # use std::unordered_map as control group.
 ART := art.test
 # Directories
-INDEXES=../../indexes
+INDEXES=indexes
 HETERO_DIR = ../sequential
 LEVEL_DIR := $(INDEXES)/Level-Hashing/level_hashing
 
@@ -45,7 +45,7 @@ $(ART) : test_dram_art.o $(HETERO_DIR)/raw_art.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(HETERO_DIR)/raw_art.o: $(HETERO_DIR)/art.c $(HETERO_DIR)/art.h $(HETERO_DIR)/common.h
-	$(CC) $(CFLAGS) -o $@ -c $< $(LDFLAGS) -UBUF_LEN
+	$(CC) $(CFLAGS) -o $@ -c $< $(LDFLAGS) -DRAW_ART
 
 ################ LEVEL #####################
 $(LEVEL_EXEC) : test_dram_level_hash.o $(LEVEL_OBJS:%.o=$(LEVEL_DIR)/%.o)

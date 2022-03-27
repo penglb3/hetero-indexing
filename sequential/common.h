@@ -32,8 +32,8 @@ typedef struct entry{
 #define IS_EMPTY(key) ((*(uint64_t*)(key) == 0)
 
 // ------------- FUNCTIONALITY SWITCHES -------------
-#define USE_CM 1
-#ifdef USE_CM // Following functionality requires Count-MIN
+// #define USE_CM 1
+#if defined(USE_CM) && !defined(RAW_ART) // Following functionality requires Count-MIN
 // Note that you can disable ART buffer by undef-ing BUF_LEN, which should be somewhere above ;) 
 #define SDR_SINK 1 // To disable hash update SINK, just undef this. 
 #define SDR_FLOAT 1 // Float mode: 0 = disabled, 1 = INB only, 2 = leaf nodes only, 3 = all
@@ -69,8 +69,9 @@ typedef struct hash_sys{
 #define NODE16  2
 #define NODE48  3
 #define NODE256 4
-
+#ifndef RAW_ART
 #define BUF_LEN 3 // To disable ART INB, just undef this.
+#endif
 #define MAX_PREFIX_LEN KEY_LEN
 
 /**
