@@ -42,6 +42,8 @@ hash_sys* hash_construct(uint64_t size, uint32_t seed){
     // initialize other members
     hash_s->size = size;
     hash_s->count = 0;
+    if(size & (size - 1)) // Size must be power of 2
+        return NULL;
     hash_s->entries = calloc(size, sizeof(bin));
     if(!hash_s->entries)
         return NULL;
@@ -91,9 +93,9 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
     MurmurHash3_x64_128(key, KEY_LEN, hash_s->seed, h);
     bin* target = hash_s->entries + HASH_IDX(hash_s, h);
     int j = 0, available = -1, i_min = -1, cnt = INT32_MAX;
-    #ifdef SDR_FLOAT
-    int min_cnt = (mode & INSERT) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
-    if((mode & INSERT) == 0 && freq)
+    #ifdef SDR_SINK
+    int min_cnt = (mode & INSERT) || (ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) ? 0 : countmin_inc_explicit(ind->cm, (const void *)key, KEY_LEN, h);
+    if(min_cnt && freq)
         *freq = min_cnt;
     #endif
     for(j = 0; j < BIN_CAPACITY; j++){ // Try INPLACE update
@@ -107,9 +109,9 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
         }
         if(key_h == EMPTY_FLAG && available == -1)
             available = j;
-        #ifdef SDR_FLOAT
-        if(min_cnt > 0 && available == -1 && i_min == -1) {
-            cnt = countmin_count(ind->cm, (const void*)target->data[j].value, KEY_LEN);
+        #ifdef SDR_SINK
+        if(min_cnt > 0 && available == -1 && i_min == -1 && (rand() & (BIN_CAPACITY-1)) < SDR_SINK) {
+            cnt = countmin_count(ind->cm, (const void*)target->data[j].key, KEY_LEN);
             cnt = countmin_amplify(cnt);
             if(min_cnt > cnt){
                 min_cnt = cnt;
@@ -118,6 +120,15 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
             }
         }
         #endif
+    }
+    if(i_min != -1){ // No empty slot, but we do have an key_lru (that means we are to UPDATE)
+        // Now put key_lru in ART.
+        art_insert_no_replace(ind->tree, target->data[i_min].key, MEM_TYPE, (void*)target->data[i_min].value);
+        // Since we have the key in the system, but not in hash table, then it must be in ART
+        art_delete(ind->tree, key, KEY_LEN);
+        *(uint64_t*)target->data[i_min].value = *(uint64_t*)value;
+        *(uint64_t*)target->data[i_min].key = key_i64;
+        return 0;
     }
     // Reaching this point means key is not in hash table.
     if(mode == STRICT_UPDATE) // In strict update, insertion is not allowed!
@@ -132,15 +143,6 @@ int hash_modify(index_sys* ind, const uint8_t* key, const uint8_t* value, int* f
             hash_s->count ++;
             return 0;
         }
-    else if(i_min != -1){ // No empty slot, but we do have an key_lru (that means we are to UPDATE)
-        // Now put key_lru in ART.
-        art_insert_no_replace(ind->tree, target->data[i_min].key, MEM_TYPE, (void*)target->data[i_min].value);
-        // Since we have the key in the system, but not in hash table, then it must be in ART
-        art_delete(ind->tree, key, KEY_LEN);
-        *(uint64_t*)target->data[i_min].value = *(uint64_t*)value;
-        *(uint64_t*)target->data[i_min].key = key_i64;
-        return 0;
-    }
     return HASH_BIN_FULL;
 }
 

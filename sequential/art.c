@@ -287,7 +287,7 @@ static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, ar
     uint64_t *key_ptr = IS_LEAF(n) ? (uint64_t*)(LEAF_RAW(n)->key) : (uint64_t*)n->buffer[i].key,
              *value_ptr = IS_LEAF(n) ? (uint64_t*)(LEAF_RAW(n)->value) : (uint64_t*)n->buffer[i].value;
     if(!ref_parent){
-        if(hash_insert_nocheck(ind->hash, key, update_value ? update_value : (const uint8_t*)value_ptr))
+        if(update_value || hash_insert_nocheck(ind->hash, key, (const uint8_t*)value_ptr))
             return 0;
         *key_ptr = EMPTY_FLAG;
         if(!IS_LEAF(n))
@@ -313,7 +313,7 @@ static int art_float(index_sys* ind, const uint8_t *key, const uint64_t info, ar
             }
             return FLOAT_RESULT_MOVE;
         }
-        if(key_i == OCCUPIED_FLAG) 
+        if(key_i == OCCUPIED_FLAG && rand() % BUF_LEN) 
             continue;
         f = countmin_count(ind->cm, &key_i, KEY_LEN);
         f = countmin_amplify(f); 
@@ -362,8 +362,10 @@ int art_search(index_sys *ind, const unsigned char *key, uint64_t* h, uint64_t* 
             if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 *query_result = atomic_load((uint64_t*)((art_leaf*)n)->value);
                 #if SDR_FLOAT & 2
-                freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
-                art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, NULL);
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0){
+                    freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
+                    art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, NULL);
+                }
                 #endif // SDR_FLOAT_LEAF
                 return 1;
             }
@@ -383,8 +385,10 @@ int art_search(index_sys *ind, const unsigned char *key, uint64_t* h, uint64_t* 
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 *query_result = atomic_load((uint64_t*)n->buffer[i].value);
                 #if SDR_FLOAT & 1
-                freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
-                art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, NULL);
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0){
+                    freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
+                    art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, NULL);
+                }
                 #endif // SDR_FLOAT
                 return 1;
             }
@@ -414,7 +418,8 @@ void* art_update(index_sys *ind, const unsigned char *key, const int freq, void*
             if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 val = atomic_exchange((uint64_t*)((art_leaf*)n)->value, *(uint64_t*)value);
                 #if SDR_FLOAT & 2
-                art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, NULL);
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0)
+                    art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, value);
                 #endif
                 return (void*)val;
             }
@@ -434,9 +439,10 @@ void* art_update(index_sys *ind, const unsigned char *key, const int freq, void*
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 void* old = n->buffer[i].value;
                 #if SDR_FLOAT & 1
-                if(art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, value)){
-                    return old;
-                }
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0)
+                    if(art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, value)){
+                        return old;
+                    }
                 #endif
                 *(uint64_t*)n->buffer[i].value = *(uint64_t*)value;
                 return old;

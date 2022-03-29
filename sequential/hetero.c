@@ -12,7 +12,7 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
     index->tree = calloc(1, sizeof(art_tree));
     index->has_special_key[0] = 0;
     index->has_special_key[1] = 0;
-    hash_expand = hash_expand_copy;
+    hash_expand = hash_expand_reinsert;
     if(!index->hash || !index->tree) 
         return NULL;
     #ifdef USE_CM
@@ -50,10 +50,7 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
             printf("Expand with size 2^%u start...", __builtin_ctz(index->hash->size));
             hash_expand(& index->hash);
             printf("end\n");
-            #ifdef USE_CM
-            countmin_clear(index->cm);
-            #endif
-            // index_compact(index, 0.8);
+            index_compact(index, 0.9);
             goto REINSERT;
         }
 
@@ -71,16 +68,25 @@ int index_query(index_sys* index, const uint8_t* key, uint64_t* query_result){
             return 1;
     }
     uint64_t h[2];
-    int freq;
     if(hash_query(index, key, h, query_result)){
         #ifdef USE_CM
-        countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+        index->sample_acc ++;
+        if((index->sample_acc & (CM_SAMPLE_INTERVAL - 1)) == 0){
+            countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+            if((index->sample_acc & (CM_SAMPLE_INTERVAL * CLEAR_PER - 1)) == 0)
+                index->sample_acc = 0;
+        }
         #endif
         return 0;
     }
     if(art_search(index, key, h, query_result)){
         #ifdef USE_CM
-        countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+        index->sample_acc ++;
+        if((index->sample_acc & (CM_SAMPLE_INTERVAL - 1)) == 0){
+            countmin_inc_explicit(index->cm, key, KEY_LEN, h);
+            if((index->sample_acc & (CM_SAMPLE_INTERVAL * CLEAR_PER - 1)) == 0)
+                index->sample_acc = 0;
+        }
         #endif
         return 0;
     }
@@ -111,7 +117,7 @@ int index_delete(index_sys* index, const uint8_t* key){
     if(!found){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }
-    if( load_factor(index->hash) < COMPACT_START_LOAD_FACTOR && index->tree->buffer_count )
+    if( load_factor(index->hash) < COMPACT_START_LOAD_FACTOR && index->tree->buffer_count * 16 > index->tree->size )
         index_compact(index, MAX_COMPACT_LOAD_FACTOR);
     return 0;
 }
@@ -125,7 +131,7 @@ int index_compact(index_sys* index, double max_load_factor){
     art_node* n = index->tree->root, **children, *c;
     int error, consecutive_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
     queue_push(q, n);
-    #if defined(USE_CM) && defined(COMPACT) && defined(BUF_LEN)
+    #if defined(COMPACT) && defined(BUF_LEN)
     while(!queue_empty(q)){
         n = queue_pop(q);
         if(is_leaf(n)) continue; // IS LEAF

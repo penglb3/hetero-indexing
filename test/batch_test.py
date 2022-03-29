@@ -10,9 +10,11 @@ YCSB_EXEC = '/home/plb/ycsb-0.17.0/bin/ycsb.sh' # The YCSB executable path
 
 # [Test setting] Change them to your need.
 workload_types = 'abcd'
-workload_counts = [{'load': 4, 'run': 4}] #,{'load': 3, 'run': 10},{'load': 64, 'run': 64}]
+workload_counts = [{'load': i, 'run': i} for i in [4, 16, 64, 256]]
 models = ['hetero','art','unordered_map','level_hash']
-RESULT_PATH = 'result'
+bench_latency = True # To get accurate average latency, set this to False
+USE_STABLE_BIN = True 
+RESULT_PATH = 'latency'
 
 ANSI_COLOR = {
     'RED'    : "\x1b[31m",
@@ -24,12 +26,15 @@ ANSI_COLOR = {
     'RESET'  : "\x1b[0m"
 }
 
+do_latency = '--bench=latency' if bench_latency else ''
+bin_postfix = '.test.stable' if USE_STABLE_BIN else '.test'
+
 # Check if necessary files exists
 if not os.path.exists(WL_PATH):
     raise FileNotFoundError(f'Workload directory {WL_PATH} not found!')
 for model in models:
-    if not os.path.exists(model+'.test'):
-        raise FileNotFoundError(f'Test object {model+".test"} not found!')
+    if not os.path.exists(model + bin_postfix):
+        raise FileNotFoundError(f'Test object {model + bin_postfix} not found!')
 
 os.makedirs(RESULT_PATH, exist_ok=True)
 
@@ -51,7 +56,7 @@ for wcount in workload_counts:
                 continue
             try:
                 with os.popen(
-                    f"./{model}.test --mode=ycsb --load_file={load_file} --run_file={run_file}") as p:
+                    f"./{model + bin_postfix} --mode=ycsb {do_latency} --load_file={load_file} --run_file={run_file}") as p:
                     log = p.readlines()
             except UnexpectedException as e:
                 raise RuntimeError(f'Run {model} failed.') from e

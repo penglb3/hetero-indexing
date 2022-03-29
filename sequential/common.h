@@ -35,8 +35,9 @@ typedef struct entry{
 // #define USE_CM 1
 #if defined(USE_CM) && !defined(RAW_ART) // Following functionality requires Count-MIN
 // Note that you can disable ART buffer by undef-ing BUF_LEN, which should be somewhere above ;) 
-#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
+// #define SDR_SINK 1 // To disable hash update SINK, just undef this. 
 #define SDR_FLOAT 1 // Float mode: 0 = disabled, 1 = INB only, 2 = leaf nodes only, 3 = all
+#define CLEAR_PER 32
 #endif
 
 #define COMPACT 1 // To disable index COMPACT, just undef this.
@@ -50,6 +51,8 @@ typedef struct entry{
 #define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
 #define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
 #define MAX_TREE_HASH_RATIO 4
+#define CM_SAMPLE_INTERVAL 8
+#define CM_DEPTH 4
 // ------------------- HASH ---------------------
 
 
@@ -111,6 +114,7 @@ typedef struct data_sketch {
 // ------------------- HETERO INDEX ---------------------
 
 typedef struct index_sys{
+    uint32_t sample_acc, sample;
     uint8_t has_special_key[2], special_key_val[2][VAL_LEN];
     sketch *cm, *memb;
     hash_sys* hash;

@@ -6,8 +6,6 @@
 #include "data_sketch.h"
 __BEGIN_DECLS
 // --------------Index System-----------------
-#define CM_DEPTH 6
-
 
 /**
 * Construct an index system
