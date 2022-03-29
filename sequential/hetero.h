@@ -8,7 +8,6 @@ __BEGIN_DECLS
 // --------------Index System-----------------
 #define CM_DEPTH 6
 
-#define MAX_TREE_HASH_RATIO 5
 
 /**
 * Construct an index system

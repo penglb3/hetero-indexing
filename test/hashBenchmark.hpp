@@ -1,6 +1,6 @@
 #ifndef _HASH_BENCHMARK_HPP_
 #define _HASH_BENCHMARK_HPP_
-
+#include <string>
 #include <iostream>
 #include <iomanip>
 #include <chrono>
@@ -11,14 +11,20 @@
 #include <cassert>
 #include <gflags/gflags.h>
 #include <cstring>
+#include <algorithm>
 #include <map>
+#ifdef GFLAGS_NAMESPACE
+using namespace GFLAGS_NAMESPACE;
+#else
+using namespace gflags;
+#endif
 
 // https://stackoverflow.com/questions/478898/how-do-i-execute-a-command-and-get-the-output-of-the-command-within-c-using-po
 #include <cstdio>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <string>
+
 #include <array>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
@@ -139,103 +145,10 @@ typedef struct Workload{
 workload_t this_workload;
 std::string bench_type;
 
-void print_benchmarks_result(const std::string & hash_name, const std::string & platform, const std::string & step_name, int num_of_ops , double throughput, double load_factor){
-    std::cout 
-            << std::fixed << std::left << std::setw(16) << "[results_info] " 
-            << std::fixed << std::setw(14) << "platform"
-            << " , " << std::fixed << std::setw(14) << "hash_name"
-            << " , " << std::fixed << std::setw(14) << "step_name"
-            << " , " << std::fixed << std::setw(14) << "num_of_ops"
-            << " , " << std::fixed << std::setw(14) << "throughput"
-            << " , " << std::fixed << std::setw(14) << "avg_latency" 
-            << " , " << std::fixed << std::setw(14) << "load_factor" 
-            << " , " << std::fixed << std::setw(14) << "mode"
-            << " , " << std::fixed << std::setw(50) << "workload_file_name"
-            << std::endl;
-    if (step_name == "load") {
-        std::cout
-                << std::fixed << std::left << std::setw(16) << "[results] " 
-                << std::fixed << std::setw(14) << platform
-                << " , "  << std::fixed << std::setw(14) << hash_name
-                << " , " << std::fixed << std::setw(14) << step_name
-                << " , " << std::fixed << std::setw(14) << num_of_ops 
-                << " , " << std::fixed << std::setw(14) << std::setprecision(1) << throughput 
-                << " , " << std::fixed << std::setw(14) << std::setprecision(6) << 1/throughput * 1000000000 
-                << " , " << std::fixed << std::setw(14) << std::setprecision(6) << load_factor 
-                << " , " << std::fixed << std::setw(14) << this_workload.mode
-                << " , " << std::fixed << std::setw(50) << this_workload.load_workload_file_name
-                << std::endl;
-    }
-    else {
-        std::cout
-                << std::fixed << std::left << std::setw(16) << "[results] " 
-                << std::fixed << std::setw(14) << platform
-                << " , "  << std::fixed << std::setw(14) << hash_name
-                << " , " << std::fixed << std::setw(14) << step_name
-                << " , " << std::fixed << std::setw(14) << num_of_ops 
-                << " , " << std::fixed << std::setw(14) << std::setprecision(1) << throughput 
-                << " , " << std::fixed << std::setw(14) << std::setprecision(6) << 1/throughput * 1000000000 
-                << " , " << std::fixed << std::setw(14) << std::setprecision(6) << load_factor 
-                << " , " << std::fixed << std::setw(14) << this_workload.mode
-                << " , " << std::fixed << std::setw(50) << this_workload.run_workload_file_name
-                << std::endl;
-    }
-}
-
-
-void groundtrue_hash_map(std::vector<operation_t> & load_ops, std::vector<operation_t> & run_ops){
-    // update op.value in OP_READ
-    std::unordered_map<hash_key_t, hash_value_t> test_map;
-    // load
-    for (auto op : load_ops ){
-        switch (op.op)
-        {
-            case OP_INSERT: {
-                test_map.insert({op.key, op.value});
-                break;
-            }
-            default: {
-                std::cout << "Unknown OP In Load : " << op.op << std::endl;
-                break;
-            }
-        }
-    }
-
-    // run
-    for (auto & op : run_ops ){
-        switch (op.op)
-        {
-            case OP_INSERT: {
-                test_map.insert({op.key, op.value});
-                break;
-            }
-            case OP_READ: {
-                auto read_result = test_map[op.key];
-                // IMPORTANT!!
-                op.value = read_result;
-                break;
-            }
-            case OP_UPDATE: {
-                test_map[op.key] = op.value;
-                break;
-            }
-            case OP_DELETE: {
-                test_map.erase(op.key);
-                break;
-            }
-            default: {
-                std::cout << "Unknown OP In Run : " << op.op << std::endl;
-                break;
-            }
-        }
-    }
-    return ;
-}
-
 class HashBenchmark{
     std::string hash_name;
     std::string platform;
-    bool running;
+    bool running, bench_latency;
 
     // workload info
     std::string mode;
@@ -245,14 +158,17 @@ class HashBenchmark{
     // temp info
     std::string step_name;
     std::chrono::system_clock::time_point start_time;
+    std::chrono::system_clock::time_point step_start, step_end;
     size_t start_mem_size;
     size_t end_mem_size;
-    std::chrono::nanoseconds duration;
+    std::chrono::nanoseconds duration, acc_duration;
     size_t mem_size_diff;
     uint64_t MediaReads;
     uint64_t MediaWrites;
     int num_of_pm;
+    std::vector<std::chrono::nanoseconds> latency;
 public:
+    int step_count;
     // workload data
     std::vector<double> ps;
     std::unordered_map<hash_key_t, hash_value_t> groundtrue_hashmap;
@@ -262,7 +178,7 @@ public:
     std::string bench_type;
     
     HashBenchmark(int argc, char ** argv, const std::string & hash_name, const std::string & platform){
-        gflags::ParseCommandLineFlags(&argc, &argv, false);
+        ParseCommandLineFlags(&argc, &argv, false);
         this->hash_name = hash_name;
         this->platform = platform;
         std::cout << "Init ..." << std::endl;
@@ -278,6 +194,7 @@ public:
         this->ps = ps;
         // deal with args
         bench_type = FLAGS_bench;
+        bench_latency = (bench_type == "latency");
         mode = FLAGS_mode;
 
         std::vector<int> load_op_counts(NUM_OPS, 0);
@@ -402,7 +319,7 @@ public:
         for (auto op : run_ops){
             run_op_counts[int(op.op)]++;
         }
-
+        
         std::cout << "[load] [total ] : " << load_ops.size() << std::endl;
         std::cout << "[load] [INSERT] : " << load_op_counts[OP_INSERT] <<std::endl;
         std::cout << "[load] [READ  ] : " << load_op_counts[OP_READ] <<std::endl;
@@ -430,20 +347,35 @@ public:
         
         std::cout << std::endl << "Start Step :" << name << std::endl;
         step_name = name;
+        if(bench_latency){
+            if(name == "load")
+                latency = std::vector<std::chrono::nanoseconds>(load_ops.size());
+            else
+                latency = std::vector<std::chrono::nanoseconds>(run_ops.size());
+        }
+        step_count = 0;
         start_mem_size = HashBenchmark::get_mem_size();
         start_time = std::chrono::system_clock::now();
+        step_start = start_time;
     }
 
     void End(){
         duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::system_clock::now() - start_time);
-        
+            std::chrono::system_clock::now() - start_time);
         end_mem_size = get_stable_mem_size();
         mem_size_diff = end_mem_size - start_mem_size;
 
         MediaReads = (get_media_reads_size(num_of_pm) - MediaReads)/16;
         MediaWrites = (get_media_writes_size(num_of_pm) - MediaWrites)/16; // 16 = 1064/64
     }
+
+    void Step(){
+        if(!bench_latency) return;
+        step_end = std::chrono::system_clock::now();
+        latency[step_count++] = std::chrono::duration_cast<std::chrono::nanoseconds>(step_end - step_start);
+        step_start = step_end;
+    }
+
     void Print(const std::map<std::string, double> & parameters){
         print_benchmarks_result(parameters);
         step_name = "None";
@@ -467,6 +399,20 @@ public:
             num_of_ops = run_ops.size();
             workload_file_name = run_workload_file_name;
         }
+        std::chrono::nanoseconds z=std::chrono::nanoseconds::zero(),
+            median=z, P5=z, P25=z, P75=z, P95=z;
+        if(bench_latency){
+            std::sort(latency.begin(), latency.end());
+            median = latency[latency.size() / 2];
+            if (latency.size() & 1)
+                median = (median + latency[latency.size()/2+1]) / 2;
+            auto per = latency.size() / 100;
+            P5 = latency[per * 5],
+            P25 = latency[per * 25],
+            P75 = latency[per * 75],
+            P95 = latency[per * 95];
+        }
+
         std::cout 
                 << std::fixed << std::left << std::setw(16) << ANSI_COLOR_RED "[results_info] " ANSI_COLOR_RESET
                 << "platform"
@@ -480,6 +426,8 @@ public:
                 << "," << ANSI_COLOR_CYAN "mem_diff_size(KB)" ANSI_COLOR_RESET
                 << "," << "start_mem_size(KB)"
                 << "," << "end_mem_size(KB)"
+                << "," << ANSI_COLOR_RED "median_latency(ns)" ANSI_COLOR_RESET
+                << "," << "P[5-25-75-95]"
                 << "," << "workload_file_name"
                 #ifdef TEST_PMEM
                 << "," << "MediaReads(KB)" 
@@ -501,10 +449,15 @@ public:
                 << ANSI_COLOR_RESET "," ANSI_COLOR_BLUE << duration.count()/(1000*1000)
                 << ANSI_COLOR_RESET "," << hash_name
                 << ANSI_COLOR_RESET "," ANSI_COLOR_YELLOW << std::setprecision(1) << throughput 
-                << ANSI_COLOR_RESET "," ANSI_COLOR_GREEN << std::setprecision(6) << 1000.0*1000.0*1000.0/throughput
+                << ANSI_COLOR_RESET "," ANSI_COLOR_GREEN << std::setprecision(3) << 1000.0*1000.0*1000.0/throughput
                 << ANSI_COLOR_RESET "," ANSI_COLOR_CYAN << mem_size_diff
                 << ANSI_COLOR_RESET "," << start_mem_size
                 << "," << end_mem_size
+                << "," ANSI_COLOR_RED << std::setprecision(3)  << median.count()
+                << ANSI_COLOR_RESET ",[" << std::setprecision(3) << P5.count() << '-' 
+                                         << std::setprecision(3) << P25.count() << '-' 
+                                         << std::setprecision(3) << P75.count() << '-'
+                                         << std::setprecision(3) << P95.count() << ']'
                 << "," << workload_file_name
                 #ifdef TEST_PMEM
                 << "," << MediaReads

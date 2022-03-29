@@ -33,7 +33,7 @@ $(HETERO_EXEC): test_dram_hetero.o $(HETERO_OBJS:%.o=$(HETERO_DIR)/%.o)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile .cpp files into .o files
-$(HETERO_DIR)/%.o : 
+$(HETERO_DIR)/%.o : $(HETERO_DIR)/%.c $(HETERO_DIR)/%.h
 	make $(HETERO_DIR)
 
 ################ CONTROL ###################

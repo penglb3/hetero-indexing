@@ -6,12 +6,13 @@ import time
 # [Environment properties] Change the below parameters to fit your env!
 WL_PATH = '../workload' # The directory to save generated files
 YCSB_EXEC = '/home/plb/ycsb-0.17.0/bin/ycsb.sh' # The YCSB executable path
-RESULT_PATH = 'result'
+
 
 # [Test setting] Change them to your need.
-workload_types = ['a']#,'b','c','d']
-workload_counts = [{'load': 3, 'run': 3}]
-models = ['hetero']#,'art','unordered_map','level_hash']
+workload_types = 'abcd'
+workload_counts = [{'load': 4, 'run': 4}] #,{'load': 3, 'run': 10},{'load': 64, 'run': 64}]
+models = ['hetero','art','unordered_map','level_hash']
+RESULT_PATH = 'result'
 
 ANSI_COLOR = {
     'RED'    : "\x1b[31m",
@@ -40,7 +41,7 @@ for wcount in workload_counts:
         load_file = os.path.join(WL_PATH, f'{setting}-load.log.labeled')
         run_file = os.path.join(WL_PATH, f'{setting}-run.log.formatted')
         if not os.path.exists(load_file) or not os.path.exists(run_file):
-            raise FileNotFoundError(f'Workload {model+".test"} not found!')
+            raise FileNotFoundError(f'Workload {setting} not found!')
         for model in models:
             result_file = os.path.join(RESULT_PATH, f'{setting}-{model}.log')
             print(f'[Log] Start testing {model}')
@@ -61,6 +62,12 @@ for wcount in workload_counts:
                 # Clear color codes
                 for code in ANSI_COLOR.values():
                     line = line.replace(code, '')
-                result.append(line)
+                if line[:8] == '[results':
+                    result.append(line)
+                else:
+                    break
+            if len(result) < 4:
+                print('[Log] Error / Fault. Skip.')
+                continue
             with open(result_file, 'w') as f:
                 f.writelines(result)

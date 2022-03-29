@@ -12,18 +12,23 @@ index_sys* index_construct(uint64_t hash_size, uint64_t seed){
     index->tree = calloc(1, sizeof(art_tree));
     index->has_special_key[0] = 0;
     index->has_special_key[1] = 0;
+    hash_expand = hash_expand_copy;
     if(!index->hash || !index->tree) 
         return NULL;
+    #ifdef USE_CM
     index->cm = countmin_construct(hash_size, CM_DEPTH, index->hash->seed);
     if(!index->cm)
         return NULL;
+    #endif
     return art_tree_init(index->tree) ? NULL : index;
 }
 
 void index_destruct(index_sys* index){
     hash_destruct(index->hash);
     art_tree_destroy(index->tree);
+    #ifdef USE_CM
     countmin_destroy(index->cm);
+    #endif
     free(index->tree);
     free(index);
 }
@@ -41,10 +46,14 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
         if(status == 0){
             return 0;
         }
-        if(index->hash->count * MAX_TREE_HASH_RATIO < index->tree->size){
+        if(index->hash->size * BIN_CAPACITY * MAX_TREE_HASH_RATIO < index->tree->size){
+            printf("Expand with size 2^%u start...", __builtin_ctz(index->hash->size));
             hash_expand(& index->hash);
+            printf("end\n");
+            #ifdef USE_CM
             countmin_clear(index->cm);
-            index_compact(index, 0.8);
+            #endif
+            // index_compact(index, 0.8);
             goto REINSERT;
         }
 
@@ -112,12 +121,11 @@ static inline int is_leaf(art_node* n) {
 }
 
 int index_compact(index_sys* index, double max_load_factor){
-    debug("\n[Debug] Refill starts with load factor %.3lf, [H]%lu+[TB]%lu: ", load_factor(index->hash), index->hash->count, index->tree->buffer_count);
     queue* q = queue_construct(index->hash->size >> 4);
     art_node* n = index->tree->root, **children, *c;
     int error, consecutive_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
     queue_push(q, n);
-    #if defined(COMPACT) && defined(BUF_LEN)
+    #if defined(USE_CM) && defined(COMPACT) && defined(BUF_LEN)
     while(!queue_empty(q)){
         n = queue_pop(q);
         if(is_leaf(n)) continue; // IS LEAF
@@ -162,7 +170,6 @@ int index_compact(index_sys* index, double max_load_factor){
     }
     #endif // COMPACT
     queue_destruct(q);
-    debug("[CF]%d [Hash Fill]%d\n", consecutive_failure, index->hash->count - cnt);
     return 0;
 }
 

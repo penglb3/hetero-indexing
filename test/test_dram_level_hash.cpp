@@ -17,7 +17,7 @@ void test_perf(HashBenchmark & hm){
     const std::vector<operation_t>& load_ops = hm.load_ops;
     const std::vector<operation_t>& run_ops = hm.run_ops;
 
-    level_hash* ind = level_init(17);
+    level_hash* ind = level_init(18);
     int reinsert = 0; 
     
     hm.Start("load");

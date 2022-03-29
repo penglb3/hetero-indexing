@@ -49,7 +49,7 @@ typedef struct entry{
 #define EST_DIFF 10 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
 #define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
 #define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
-
+#define MAX_TREE_HASH_RATIO 4
 // ------------------- HASH ---------------------
 
 

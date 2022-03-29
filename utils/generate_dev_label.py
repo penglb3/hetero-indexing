@@ -19,9 +19,9 @@ MEMTYPE_PERCENTAGE = 20  # If 20, Then TOP 20% will be marked as mem_type
 # Set to None if you want to generate for all logs
 # !! UNIT is million !!
 MILLION = 1000000
-WL_COUNTS = [{'load': 64, 'run': 64}]
+WL_COUNTS = [{'load': 256, 'run': 256}]
 # Will operate only on these workload types
-workload_types = ['c']
+workload_types = 'abcd'
 
 # ---------------- Parameters END ------------
 OPS = ["INSERT", "READ", "UPDATE", "DELETE", "READMODIFYWRITE"]
