@@ -335,7 +335,7 @@ public:
 
         // init ok
         if (FLAGS_check){
-            groundtrue_hashmap = HashBenchmark::groundtrue_hash_map(load_ops, run_ops);
+            HashBenchmark::groundtrue_hash_map(load_ops, run_ops);
         }
         auto mem_size = get_stable_mem_size();
         std::cout << "Maybe totally free memory\n";

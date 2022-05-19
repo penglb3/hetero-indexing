@@ -9,12 +9,12 @@ YCSB_EXEC = '/home/plb/ycsb-0.17.0/bin/ycsb.sh' # The YCSB executable path
 
 
 # [Test setting] Change them to your need.
-workload_types = 'abcd'
+workload_types = 'a'
 workload_counts = [{'load': i, 'run': i} for i in [4, 16, 64, 256]]
-models = ['hetero','art','unordered_map','level_hash']
+models = ['art+inb']# ,'art','unordered_map','level_hash']
 bench_latency = True # To get accurate average latency, set this to False
-USE_STABLE_BIN = True 
-RESULT_PATH = 'latency'
+USE_STABLE_BIN = False 
+RESULT_PATH = 'hetero-struct/art+inb'
 
 ANSI_COLOR = {
     'RED'    : "\x1b[31m",
@@ -49,14 +49,14 @@ for wcount in workload_counts:
             raise FileNotFoundError(f'Workload {setting} not found!')
         for model in models:
             result_file = os.path.join(RESULT_PATH, f'{setting}-{model}.log')
-            print(f'[Log] Start testing {model}')
+            print(f'[Log] Start testing {model} ({RESULT_PATH})')
             start = time.perf_counter()
             if os.path.exists(result_file):
                 print(f'Test log {result_file} already exists. skip.')
                 continue
+            cmd = f"./{model + bin_postfix} --mode=ycsb {do_latency} --load_file={load_file} --run_file={run_file}"
             try:
-                with os.popen(
-                    f"./{model + bin_postfix} --mode=ycsb {do_latency} --load_file={load_file} --run_file={run_file}") as p:
+                with os.popen(cmd) as p:
                     log = p.readlines()
             except UnexpectedException as e:
                 raise RuntimeError(f'Run {model} failed.') from e
@@ -72,7 +72,7 @@ for wcount in workload_counts:
                 else:
                     break
             if len(result) < 4:
-                print('[Log] Error / Fault. Skip.')
+                print(f'[Log] Error / Fault. Skip. Command = {cmd}')
                 continue
             with open(result_file, 'w') as f:
                 f.writelines(result)

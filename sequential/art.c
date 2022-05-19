@@ -362,7 +362,7 @@ int art_search(index_sys *ind, const unsigned char *key, uint64_t* h, uint64_t* 
             if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 *query_result = atomic_load((uint64_t*)((art_leaf*)n)->value);
                 #if SDR_FLOAT & 2
-                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0){
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL*FLOAT_AMP-1)) == 0){
                     freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
                     art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, NULL);
                 }
@@ -385,7 +385,7 @@ int art_search(index_sys *ind, const unsigned char *key, uint64_t* h, uint64_t* 
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 *query_result = atomic_load((uint64_t*)n->buffer[i].value);
                 #if SDR_FLOAT & 1
-                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0){
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL*FLOAT_AMP-1)) == 0){
                     freq = countmin_inc_explicit(ind->cm, key, KEY_LEN, h);
                     art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, NULL);
                 }
@@ -418,7 +418,7 @@ void* art_update(index_sys *ind, const unsigned char *key, const int freq, void*
             if (!leaf_matches((art_leaf*)n, key, KEY_LEN, depth)) {
                 val = atomic_exchange((uint64_t*)((art_leaf*)n)->value, *(uint64_t*)value);
                 #if SDR_FLOAT & 2
-                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0)
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL*FLOAT_AMP-1)) == 0)
                     art_float(ind, key, PACK_INFO(freq, 0, depth, depth_parent), child, ref_parent, value);
                 #endif
                 return (void*)val;
@@ -439,7 +439,7 @@ void* art_update(index_sys *ind, const unsigned char *key, const int freq, void*
             if(atomic_load((uint64_t*)n->buffer[i].key) == *(uint64_t*)key){
                 void* old = n->buffer[i].value;
                 #if SDR_FLOAT & 1
-                if((ind->sample_acc & (CM_SAMPLE_INTERVAL-1)) == 0)
+                if((ind->sample_acc & (CM_SAMPLE_INTERVAL*FLOAT_AMP-1)) == 0)
                     if(art_float(ind, key, PACK_INFO(freq, i, depth, depth_parent), child, ref_parent, value)){
                         return old;
                     }

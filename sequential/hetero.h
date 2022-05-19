@@ -7,6 +7,7 @@
 __BEGIN_DECLS
 // --------------Index System-----------------
 
+
 /**
 * Construct an index system
 * @param hash_size:    # of bins of the indexing system, must be power of 2

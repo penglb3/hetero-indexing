@@ -28,7 +28,7 @@ int main(int argc, char ** argv){
         switch (op.op)
         {   
             case OP_INSERT: {
-                art_insert(ind->tree, (const uint8_t*)&op.key, KEY_LEN, &op.value);
+                art_insert(ind->tree, (const uint8_t*)&op.key, KEY_LEN | op.info, &op.value);
                 break;
             }
             default: {
@@ -51,7 +51,7 @@ int main(int argc, char ** argv){
         switch (op.op)
         {
             case OP_INSERT: {
-                art_insert(ind->tree, (const uint8_t*)&op.key, KEY_LEN, &op.value);
+                art_insert(ind->tree, (const uint8_t*)&op.key, KEY_LEN | op.info, &op.value);
                 break;
             }
             case OP_READ: {

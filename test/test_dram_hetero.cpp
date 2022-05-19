@@ -16,8 +16,9 @@ int main(int argc, char ** argv){
     std::map<std::string, double> parameters;
     const std::vector<operation_t>& load_ops = hm.load_ops;
     const std::vector<operation_t>& run_ops = hm.run_ops;
-
-    index_sys* ind = index_construct(1<<17, 0);
+    int s = __builtin_ctz(load_ops.size()/1000000);
+    s = 15 + (s >= 2? s: 2);
+    index_sys* ind = index_construct(1<<s, 0);
     if(!ind){
         printf("Index init failed. Abort.\n");
         abort();

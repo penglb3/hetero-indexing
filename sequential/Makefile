@@ -1,7 +1,6 @@
 CC := gcc# compiler to use
 CXX := g++
 CFLAGS := -Wall -std=c11 -Wno-unused -g -mcx16 -O2 -D_GNU_SOURCE# compiling options
-CXXFLAGS= -O2 -g -std=c++11 $(shell pkg-config --cflags gflags)
 LDFLAGS := -lm -lpthread 
 DEPFLAGS = -MMD -MP -MT $@ -MF $(DEPDIR)/$*.d
 
@@ -29,7 +28,7 @@ $(TEST): $(OBJS)
 %.o : %.c
 %.o : %.c $(DEPDIR)/%.d | $(DEPDIR)
 	$(CC) $(DEPFLAGS) $(CFLAGS) -c $<
-
+ 
 # Utility testing program, doesn't affect the main program
 $(UTEST): util_test.o data_sketch.o murmur3.o queue.o
 	$(CC) $(CFLAGS) -o $@ $^ 

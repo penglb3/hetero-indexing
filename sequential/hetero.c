@@ -50,7 +50,9 @@ int index_insert(index_sys* index, const uint8_t* key, const uint8_t* value, int
             printf("Expand with size 2^%u start...", __builtin_ctz(index->hash->size));
             hash_expand(& index->hash);
             printf("end\n");
+            #if defined(COMPACT) && defined(BUF_LEN)
             index_compact(index, 0.9);
+            #endif
             goto REINSERT;
         }
 
@@ -117,8 +119,10 @@ int index_delete(index_sys* index, const uint8_t* key){
     if(!found){
         return art_delete(index->tree, key, KEY_LEN) == NULL;
     }
+    #if defined(COMPACT) && defined(BUF_LEN)
     if( load_factor(index->hash) < COMPACT_START_LOAD_FACTOR && index->tree->buffer_count * 16 > index->tree->size )
         index_compact(index, MAX_COMPACT_LOAD_FACTOR);
+    #endif
     return 0;
 }
 
@@ -127,11 +131,12 @@ static inline int is_leaf(art_node* n) {
 }
 
 int index_compact(index_sys* index, double max_load_factor){
+#if defined(COMPACT) && defined(BUF_LEN)
     queue* q = queue_construct(index->hash->size >> 4);
     art_node* n = index->tree->root, **children, *c;
     int error, consecutive_failure = 0, cnt = index->hash->count, n_children, total = index->tree->size + index->hash->count;
     queue_push(q, n);
-    #if defined(COMPACT) && defined(BUF_LEN)
+    
     while(!queue_empty(q)){
         n = queue_pop(q);
         if(is_leaf(n)) continue; // IS LEAF
@@ -174,14 +179,19 @@ int index_compact(index_sys* index, double max_load_factor){
                 queue_push(q, c);
         }
     }
-    #endif // COMPACT
+    
     queue_destruct(q);
+#endif // COMPACT
     return 0;
 }
 
 int index_expand(index_sys* index){
     hash_expand(&index->hash);
+    #if defined(COMPACT) && defined(BUF_LEN)
     return index_compact(index, 0.8);
+    #else
+    return 0;
+    #endif
 }
 
 uint64_t index_size(index_sys* index){

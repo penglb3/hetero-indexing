@@ -25,7 +25,7 @@ LEVEL_OBJS := hash.o level_hashing.o
 all: $(HETERO_EXEC) $(CONTROL) $(LEVEL_EXEC) $(ART)
 
 %.o: %.cpp hashBenchmark.hpp
-	$(CXX) $(CXXFLAGS) -o $@ -c $< $(LDFLAGS) -I$(INDEXES) -I$(HETERO_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ -c $< -I$(INDEXES) -I$(HETERO_DIR)
 
 ################# HETERO ###################
 # Compile the executable from all needed .o files.
@@ -33,8 +33,8 @@ $(HETERO_EXEC): test_dram_hetero.o $(HETERO_OBJS:%.o=$(HETERO_DIR)/%.o)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile .cpp files into .o files
-$(HETERO_DIR)/%.o : $(HETERO_DIR)/%.c $(HETERO_DIR)/%.h
-	make $(HETERO_DIR)
+$(HETERO_DIR)/%.o : $(HETERO_DIR)/%.c $(HETERO_DIR)/%.h $(HETERO_DIR)/common.h
+	cd $(HETERO_DIR) && make
 
 ################ CONTROL ###################
 # Control group programs, doesn't affect the main program

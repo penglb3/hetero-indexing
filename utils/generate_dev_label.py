@@ -5,6 +5,7 @@ from doctest import UnexpectedException
 import os
 from heapq import nlargest
 from tqdm import tqdm
+import gc
 
 # ---------------- Parameters ----------------
 # [Environment properties] Change the below parameters to fit your env!
@@ -19,9 +20,9 @@ MEMTYPE_PERCENTAGE = 20  # If 20, Then TOP 20% will be marked as mem_type
 # Set to None if you want to generate for all logs
 # !! UNIT is million !!
 MILLION = 1000000
-WL_COUNTS = [{'load': 256, 'run': 256}]
+WL_COUNTS = [{'load': 1024, 'run': 1024}]
 # Will operate only on these workload types
-workload_types = 'abcd'
+workload_types = 'a'
 
 # ---------------- Parameters END ------------
 OPS = ["INSERT", "READ", "UPDATE", "DELETE", "READMODIFYWRITE"]
@@ -61,6 +62,8 @@ for wcount in WL_COUNTS:
                 freq[key] = 1
             else:
                 freq[key] += 1
+        del lines
+        gc.collect()
         print(f'[Info] {MEMTYPE_PERCENTAGE}% ({N_MEMTYPE}) will be marked as MEM_TYPE ')
         # Pick out most frequent ones
         memtype_keys = nlargest(N_MEMTYPE, freq, key=freq.get)
@@ -70,7 +73,6 @@ for wcount in WL_COUNTS:
         memtype_keys = set(memtype_keys) # important speed up technique.
 
         # Read LOAD logs
-        
         print(f'[Log] Read LOAD log from <<< {load_log_name}')
         with open(load_log_name, 'r') as f:
             lines = f.readlines()
@@ -86,6 +88,7 @@ for wcount in WL_COUNTS:
                 # wordlist.append(str(int(wordlist[1] in memtype_keys))+'\n')
                 f.write(' '.join(wordlist) + '\n')
         print()
-
+        del lines
+        gc.collect()
 print("############## ALL FINISHED ##############")
 # %%

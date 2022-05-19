@@ -2,6 +2,7 @@
 # Peng Lingbo 2022.03.24
 import os
 import time
+import gc
 try:
     from tqdm import tqdm
 except ImportError:
@@ -13,8 +14,8 @@ YCSB_EXEC = '/home/plb/ycsb-0.17.0/bin/ycsb.sh' # The YCSB executable path
 
 MILLION = 1000000 # The unit for workload
 # [Generation properties] Change them to your need.
-workload_types = 'abcd'
-WL_COUNTS = [{'load':256, 'run': 256}]#{'load': 3, 'run': 3}]
+workload_types = 'a'
+WL_COUNTS = [{'load':1024, 'run':1024}]#{'load': 3, 'run': 3}]
 DISTRIBUTION = 'zipfian'
 OVERRIDE = False
 # ---------------- Parameters END ------------
@@ -62,7 +63,7 @@ for wcount in WL_COUNTS:
             # Check if parsed file already exists
             formatted_fname = os.path.join(
                 WL_PATH, f'{wtype}-{wcount["load"]}M-{wcount["run"]}M-{ycsb_op}.log.formatted')
-            if not OVERRIDE and os.path.exists(formatted_fname):
+            if not OVERRIDE and (os.path.exists(formatted_fname) or os.path.exists(formatted_fname.replace('formatted','labeled'))):
                 print('[Log]', formatted_fname, 'already exists, skip')
                 continue
 
@@ -90,6 +91,8 @@ for wcount in WL_COUNTS:
                         f.write(parsed_line)
                         num_parsed += 1
             print(f'[Log] Parsing done, {num_parsed} ops parsed, saved in: {formatted_fname}\n')
-
+            # Explicitly release memory, since gc may keep it even after use
+            del data_lines
+            gc.collect()
 print("############## ALL FINISHED ##############")
 os.remove("properties.tmp")

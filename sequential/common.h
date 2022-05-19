@@ -35,9 +35,12 @@ typedef struct entry{
 // #define USE_CM 1
 #if defined(USE_CM) && !defined(RAW_ART) // Following functionality requires Count-MIN
 // Note that you can disable ART buffer by undef-ing BUF_LEN, which should be somewhere above ;) 
-// #define SDR_SINK 1 // To disable hash update SINK, just undef this. 
-#define SDR_FLOAT 1 // Float mode: 0 = disabled, 1 = INB only, 2 = leaf nodes only, 3 = all
+#define SDR_SINK 1 // To disable hash update SINK, just undef this. 
+#define SDR_FLOAT 3 // Float mode: 0 = disabled, 1 = INB only, 2 = leaf nodes only, 3 = all
+#define FLOAT_AMP 4
 #define CLEAR_PER 32
+#define CM_SAMPLE_INTERVAL 8
+#define CM_DEPTH 4
 #endif
 
 #define COMPACT 1 // To disable index COMPACT, just undef this.
@@ -47,12 +50,10 @@ typedef struct entry{
 
 // ------------------- PARAMETERS -------------------
 #define EST_SCALE 1.05 // We want to be more certain when comparing ESTIMATED frequency and prevent jittering.
-#define EST_DIFF 10 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
+#define EST_DIFF 5 // Prevent jittering by adding some constant (say 10), for now we use 0 for test. 
 #define COMPACT_START_LOAD_FACTOR 0.6 // When hash's load factor is lower than this value after a delete, compact begins.
 #define MAX_COMPACT_LOAD_FACTOR 0.875 // When hash's load factor reach this value during compacting, compact ends.
 #define MAX_TREE_HASH_RATIO 4
-#define CM_SAMPLE_INTERVAL 8
-#define CM_DEPTH 4
 // ------------------- HASH ---------------------
 
 
@@ -83,6 +84,7 @@ typedef struct hash_sys{
  */
 
 typedef struct art_node{
+    alignas(64) 
     uint8_t partial_len;
     uint8_t type;
     uint8_t num_children;
