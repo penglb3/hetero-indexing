@@ -9,7 +9,8 @@ LDFLAGS := -lm -lpthread $(shell pkg-config --libs gflags)
 HETERO_EXEC := hetero.test
 LEVEL_EXEC := level_hash.test
 CONTROL := unordered_map.test # use std::unordered_map as control group.
-ART := art.test
+ART := art+inb.test
+ART_RAW := art.test
 # Directories
 INDEXES=indexes
 HETERO_DIR = ../sequential
@@ -22,7 +23,7 @@ LEVEL_OBJS := hash.o level_hashing.o
 .PHONY: clean all
 
 ############### General rules ##############
-all: $(HETERO_EXEC) $(CONTROL) $(LEVEL_EXEC) $(ART)
+all: $(HETERO_EXEC) $(CONTROL) $(LEVEL_EXEC) $(ART) $(ART_RAW)
 
 %.o: %.cpp hashBenchmark.hpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $< -I$(INDEXES) -I$(HETERO_DIR)
@@ -41,10 +42,16 @@ $(HETERO_DIR)/%.o : $(HETERO_DIR)/%.c $(HETERO_DIR)/%.h $(HETERO_DIR)/common.h
 $(CONTROL) : test_dram_unordered_map.cpp hashBenchmark.hpp
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(ART) : test_dram_art.o $(HETERO_DIR)/raw_art.o
+$(ART) : test_dram_art.o $(HETERO_DIR)/art.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(HETERO_DIR)/raw_art.o: $(HETERO_DIR)/art.c $(HETERO_DIR)/art.h $(HETERO_DIR)/common.h
+$(ART_RAW) : test_dram_art_raw.o $(HETERO_DIR)/raw_art.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_dram_art_raw.o: test_dram_art.cpp hashBenchmark.hpp $(HETERO_DIR)/art.h $(HETERO_DIR)/common.h
+	$(CXX) $(CXXFLAGS) -o $@ -c $< -I$(HETERO_DIR) -DRAW_ART
+
+$(HETERO_DIR)/raw_art.o: $(HETERO_DIR)/art.c
 	$(CC) $(CFLAGS) -o $@ -c $< $(LDFLAGS) -DRAW_ART
 
 ################ LEVEL #####################

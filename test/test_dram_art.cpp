@@ -9,8 +9,9 @@
 #include <unistd.h>
 #include <cassert>
 #include "hashBenchmark.hpp"
-#include "art.h"
 #include "common.h"
+#include "art.h"
+
 
 int main(int argc, char ** argv){
     HashBenchmark hm(argc, argv, "ART", "DRAM");
@@ -28,7 +29,7 @@ int main(int argc, char ** argv){
         switch (op.op)
         {   
             case OP_INSERT: {
-                art_insert(ind->tree, (const uint8_t*)&op.key, KEY_LEN | op.info, &op.value);
+                art_insert_no_replace(ind->tree, (const uint8_t*)&op.key, KEY_LEN | op.info, &op.value);
                 break;
             }
             default: {
@@ -40,8 +41,9 @@ int main(int argc, char ** argv){
     }
 
     hm.End();
-    if(mem_type)
-        printf(ANSI_COLOR_GREEN "[Hetero] Number of mem_types: %d\n" ANSI_COLOR_RESET, mem_type), mem_type = 0;
+    #ifdef BUF_LEN
+    printf(ANSI_COLOR_GREEN "[Hetero]" ANSI_COLOR_RESET " #INBs: %lu / %lu (%.3lf%)\n" , ind->tree->buffer_count, ind->tree->size, (double) ind->tree->buffer_count * 100 / ind->tree->size);
+    #endif
     hm.Print(parameters);
 
     // // run 
@@ -51,7 +53,7 @@ int main(int argc, char ** argv){
         switch (op.op)
         {
             case OP_INSERT: {
-                art_insert(ind->tree, (const uint8_t*)&op.key, KEY_LEN | op.info, &op.value);
+                art_insert_no_replace(ind->tree, (const uint8_t*)&op.key, KEY_LEN | op.info?MEM_TYPE:IO_TYPE, &op.value);
                 break;
             }
             case OP_READ: {

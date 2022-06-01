@@ -6,7 +6,7 @@
 __BEGIN_DECLS
 // --------------Hash System-----------------
 int do_nothing(const char* format, ...);
-int (*debug)(const char*, ...);
+extern int (*debug)(const char*, ...);
 
 /**
 * Construct a hash system
@@ -85,7 +85,7 @@ int hash_search(
 /**
  * Hash expansion function pointer, should be either `hash_expand_copy` or `hash_expand_copy`
  */
-int (*hash_expand)(hash_sys** h_ptr);
+extern int (*hash_expand)(hash_sys** h_ptr);
 
 /**
  * Hash expansion by memcpy-ing the first half and picking out the other half.

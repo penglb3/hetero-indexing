@@ -43,6 +43,7 @@ int main(int argc, char ** argv){
     }
 
     hm.End();
+    printf(ANSI_COLOR_GREEN "[Hetero]" ANSI_COLOR_RESET " #INBs: %lu / %lu (%.3lf%)\n" , ind->tree->buffer_count, ind->tree->size, (double) ind->tree->buffer_count * 100 / ind->tree->size);
     hm.Print(parameters);
 
     // run 

@@ -3,6 +3,9 @@
 #include "art.h"
 
 int do_nothing(const char* format, ...){return 0;};
+int (*debug)(const char*, ...);
+int (*hash_expand)(hash_sys** h_ptr);
+
 
 #define HASH_IDX(hash_s, h) (h[1] & ((hash_s)->size - 1))
 #define HASH_COMP_IDX(hash_s, data) (MurmurHash3_x64_64((data), KEY_LEN, (hash_s)->seed) & ((hash_s)->size - 1))
