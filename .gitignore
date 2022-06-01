@@ -42,6 +42,7 @@ callgrind.*
 *.log.*
 *.tmp
 test/*
+!test/experimental
 !test/*.cpp
 !test/*.hpp
 !test/*.py
