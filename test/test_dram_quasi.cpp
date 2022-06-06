@@ -16,7 +16,7 @@ int main(int argc, char ** argv){
     std::map<std::string, double> parameters;
     const std::vector<operation_t>& load_ops = hm.load_ops;
     const std::vector<operation_t>& run_ops = hm.run_ops;
-    qd_hash* qd = qd_hash_init(1, 1<<15, 768430);
+    qd_hash* qd = qd_hash_init(16, 1<<15, 768430);
     int error = 0; 
     
     hm.Start("load");

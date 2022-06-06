@@ -14,10 +14,10 @@ __BEGIN_DECLS
 #define NONE 0
 #define LINEAR 1
 #define CHAIN  2
-#define CUCKOO 3
+#define REHASH 3
 
 #define RADIUS 2
-#define CONFLICT_RESOLVE CHAIN
+#define CONFLICT_RESOLVE NONE
 
 #define KEY_LEN 8
 #define VAL_LEN 8

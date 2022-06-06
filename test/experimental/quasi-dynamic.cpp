@@ -46,6 +46,8 @@ int qd_hash_destroy(qd_hash* qd){
     return 0;
 }
 
+// ==================== General Index Process =========================
+
 #define insert_proc(q, sid, b, k, v, cap) \
     for(int i=0; i<cap; i++) {\
         if((b)[i].key == EMPTY_TAG){\
@@ -93,6 +95,8 @@ int qd_hash_destroy(qd_hash* qd){
     }\
     if (k<cap) continue;
 
+// ==================== Conflict Resolutions =========================
+
 #define try_linear_resolve(q, t, bid, sid, k, v, cb_proc)\
     for(int id=max(0,(bid)-RADIUS); id<min((q)->seg[sid].width,(bid)+RADIUS+1); id++){\
         if(id == (bid)) continue;\
@@ -135,10 +139,12 @@ int qd_hash_destroy(qd_hash* qd){
 #elif CONFLICT_RESOLVE == CHAIN
 #define try_resolve try_chain_resolve
 #define try_resolve_insert try_chain_resolve_insert
-#elif CONFLICT_RESOLVE == CUCKOO
+#elif CONFLICT_RESOLVE == REHASH
 #define try_resolve try_cuckoo_resolve
 #define try_resolve_insert try_cuckoo_resolve
 #endif
+
+// ========================= Index Functions =========================
 
 int qd_hash_set(qd_hash* qd, uintptr_t key, uintptr_t val, int insert){
     assert(key != EMPTY_TAG);
@@ -191,32 +197,28 @@ int qd_hash_del(qd_hash* qd, uintptr_t key){
 };
 
 int qd_hash_expand(qd_hash* qd, int seg_id){
-    uint64_t bin_id, width = qd->seg[seg_id].width * 2, h;
+    uint64_t bin_id, width = qd->seg[seg_id].width, h;
+    qd->seg[seg_id].width *= 2;
     int slen = __builtin_ctz(qd->length), k;
-    bin *new_content = (bin*) calloc(width, sizeof(bin)),
+    bin *new_content = (bin*) calloc(qd->seg[seg_id].width, sizeof(bin)),
         *old = qd->seg[seg_id].content, 
         *new_bin;
-    for(int i=0; i<qd->seg[seg_id].width; i++){
+    for(int l=0; l<width; l++){
         for(int j=0; j<BIN_CAPACITY; j++){
             if(old->data[j].key == EMPTY_TAG) continue;
             h = MurmurHash3_x64_64(&(old->data[j].key), KEY_LEN, qd->seed);
             bin_id = h >> slen;
-            bin_id &= width - 1;
+            bin_id &= qd->seg[seg_id].width - 1;
             new_bin = new_content + bin_id;
             #if !CONFLICT_RESOLVE || CONFLICT_RESOLVE == CHAIN
             new_bin->data[j].key = old->data[j].key;
             new_bin->data[j].value = old->data[j].value;
             #else 
-            for(k=0; k<BIN_CAPACITY; k++){
-                if(new_bin->data[k].key != EMPTY_TAG) continue;
-                new_bin->data[k].key = old->data[j].key;
-                new_bin->data[k].value = old->data[j].value;
-            }
-            if(k<BIN_CAPACITY) continue;
+            expand_proc(qd, seg_id, new_bin->data, old->data[j].key, old->data[j].value, BIN_CAPACITY);
             #endif
             // From here we need to apply conflict resolution
             #if CONFLICT_RESOLVE == LINEAR
-            for(int id=max(0,bin_id-RADIUS); id<min(qd->seg[seg_id].width,bin_id+RADIUS+1); id++){
+            for(int id=max(0,bin_id-RADIUS); id<min(qd->seg[seg_id].width, bin_id+RADIUS+1); id++){
                 if(id == bin_id) continue;
                 new_bin = new_content + id;
                 for(k=0; k<BIN_CAPACITY; k++){
@@ -227,16 +229,13 @@ int qd_hash_expand(qd_hash* qd, int seg_id){
                 }
                 if(k<BIN_CAPACITY) break;
             }
-            #elif CONFLICT_RESOLVE == CUCKOO
+            #elif CONFLICT_RESOLVE == REHASH
              // From here we need to apply conflict resolution
+            // try_cuckoo_resolve(qd, new_bin, bin_id, seg_id, old->data[j].key, old->data[j].value, expand_proc);
             bin_id = h >> (__builtin_ctz(qd->length) + __builtin_ctz(qd->seg[seg_id].width));
             bin_id &= qd->seg[seg_id].width - 1;
-            new_bin = qd->seg[seg_id].content + bin_id;
-            for(k=0; k<BIN_CAPACITY; k++){
-                if(new_bin->data[k].key != EMPTY_TAG) continue;
-                new_bin->data[k].key = old->data[j].key;
-                new_bin->data[k].value = old->data[j].value;
-            }
+            new_bin = new_content + bin_id;
+            expand_proc(qd, seg_id, new_bin->data, old->data[j].key, old->data[j].value, BIN_CAPACITY);
             #endif
         }
         #if CONFLICT_RESOLVE == CHAIN
@@ -245,19 +244,18 @@ int qd_hash_expand(qd_hash* qd, int seg_id){
                 if(old->stash[j].key == EMPTY_TAG) continue;
                 h = MurmurHash3_x64_64(&(old->stash[j].key), KEY_LEN, qd->seed);
                 bin_id = h >> slen;
-                bin_id &= width - 1;
+                bin_id &= qd->seg[seg_id].width - 1;
                 new_bin = new_content + bin_id;
                 expand_proc(qd, seg_id, new_bin->data, old->stash[j].key, old->stash[j].value, BIN_CAPACITY);
                 try_chain_resolve_insert(qd, new_bin, bin_id, seg_id, old->stash[j].key, old->stash[j].value, expand_proc);
             }
+            free(old->stash);
         }
-        free(old->stash);
         #endif
         old++;
     }
     free(qd->seg[seg_id].content);
     qd->seg[seg_id].content = new_content;
-    qd->seg[seg_id].width *= 2;
     // printf("! S%u: %lu", seg_id, qd->seg[seg_id].width);
     return 0;
 }
@@ -275,9 +273,19 @@ double qd_load_factor_seg(segment s){
 }
 
 #ifdef STANDALONE
+
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 int main(int argc, char* argv[]){
     uint64_t seed = 0, num_entries = 4000000, length = 16, width = 1<<15;
     int error;
+    double lf = -1;
     while((error = getopt(argc, argv, "s:l:w:n:"))!=-1)
         switch(error){
             case 'l': length = 1<<atoi(optarg); break;
@@ -294,6 +302,7 @@ int main(int argc, char* argv[]){
 
     uint64_t key, val;
     error = 0;
+    printf("[Insert] ");
     clock_t start = clock(), finish;
     for(uint64_t key=1; key<=num_entries; key++){
         #ifndef TEST_STD
@@ -302,15 +311,16 @@ int main(int argc, char* argv[]){
         s.emplace(key, key);
         #endif
         if(error){
-            printf("!! insertion of key-value pair <%lu,%lu> failed. !!\n", key, key);
+            printf(ANSI_COLOR_RED "key-value pair <%lu,%lu> failed." ANSI_COLOR_RESET "\n", key, key);
             error = 1;
             goto EXIT;
         }
     }
     finish = clock() - start;
-    printf("Insert: Passed in %.3lf s. # of entries in indexing system:%lu\n", 
-        (double)finish / CLOCKS_PER_SEC, qd->size);
+    printf("Passed in %.3lf s. # of entries in indexing system:%lu. Load factor:%.3lf\n", 
+        (double)finish / CLOCKS_PER_SEC, qd->size, qd_load_factor(qd));
     
+    printf("[Query]  ");
     start = clock();
     for(uint64_t key=1; key<=num_entries; key++){
         val = 0;
@@ -320,15 +330,15 @@ int main(int argc, char* argv[]){
         val = s[key];
         #endif
         if(error || val != key){
-            printf("!! query key <%lu,%lu> failed. error code=%d !!\n", key, val, error);
+            printf(ANSI_COLOR_RED "key <%lu,%lu> failed. error code=%d" ANSI_COLOR_RESET "\n", key, val, error);
             error = 2;
             goto EXIT;
         }
     }
     finish = clock() - start;
-    printf("Query: Passed in %.3lf s. \n", 
-        (double)finish / CLOCKS_PER_SEC);
+    printf("Passed in %.3lf s. \n", (double)finish / CLOCKS_PER_SEC);
 
+    printf("[Update] ");
     start = clock();
     for(uint64_t key=1; key<=num_entries; key++){
         #ifndef TEST_STD
@@ -339,30 +349,28 @@ int main(int argc, char* argv[]){
         val = s[key];
         #endif
         if(error || val != key*2+1){
-            printf("!! update key <%lu,%lu> failed. !!\n", key, val);
+            printf(ANSI_COLOR_RED "key <%lu,%lu> failed. error code=%d" ANSI_COLOR_RESET "\n", key, val, error);
             error = 3;
             goto EXIT;
         }
     }
     finish = clock() - start;
-    printf("Update: Passed in %.3lf s. \n", 
-        (double)finish / CLOCKS_PER_SEC);
+    printf("Passed in %.3lf s. \n", (double)finish / CLOCKS_PER_SEC);
 
+    printf("[Remove] ");
     start = clock();
     for(uint64_t key=1; key<=num_entries; key++){
         #ifndef TEST_STD
         error = qd_hash_del(qd, key);
         #endif
         if(error){
-            printf("!! delete key <%lu> failed. !!\n", key);
+            printf(ANSI_COLOR_RED "key <%lu> failed." ANSI_COLOR_RESET "\n", key);
             error = 4;
             goto EXIT;
         }
     }
     finish = clock() - start;
-    printf("Remove: Passed in %.3lf s. \n", 
-        (double)finish / CLOCKS_PER_SEC);
-
+    printf("Passed in %.3lf s. \n", (double)finish / CLOCKS_PER_SEC);
 
 EXIT:
     printf("End size = %lu\n", qd->size);
