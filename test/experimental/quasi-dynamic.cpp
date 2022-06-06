@@ -5,6 +5,15 @@
 #ifdef TEST_STD
 #include <unordered_map>
 #endif
+
+static inline int max(int a, int b){
+    return a > b ? a : b;
+}
+
+static inline int min(int a, int b){
+    return a < b ? a : b;
+}
+
 qd_hash* qd_hash_init(int length, int width, int seed){
     if(length & (length-1) || width & (width-1))
         return NULL;
@@ -27,45 +36,136 @@ qd_hash* qd_hash_init(int length, int width, int seed){
 
 int qd_hash_destroy(qd_hash* qd){
     for(int i=0; i<qd->length; i++){
+        #if CONFLICT_RESOLVE == CHAIN
+        for(int j=0; j<qd->seg[i].width; j++)
+            free(qd->seg[i].content[j].stash);
+        #endif
         free(qd->seg[i].content);
     }
     free(qd);
     return 0;
 }
 
+#define insert_proc(q, sid, b, k, v, cap) \
+    for(int i=0; i<cap; i++) {\
+        if((b)[i].key == EMPTY_TAG){\
+            (b)[i].key = (k);\
+            (b)[i].value = (v);\
+            (q)->size++;\
+            (q)->seg[sid].size++;\
+            return 0;\
+        } \
+    }
+
+#define update_proc(q, sid, b, k, v, cap) \
+    for(int i=0; i<cap; i++){\
+        if((b)[i].key == (k)){\
+            (b)[i].value = (v);\
+            return 0;\
+        }\
+    }
+
+#define query_proc(q, sid, b, k, vptr, cap) \
+    for(int i=0; i<cap; i++){\
+        if((b)[i].key == k){\
+            *(vptr) = (b)[i].value;\
+            return 0;\
+        }\
+    }
+
+#define delete_proc(q, sid, b, k, v, cap) \
+    for(int i=0; i<cap; i++){\
+        if((b)[i].key == k){\
+            (b)[i].key = EMPTY_TAG;\
+            (q)->size --;\
+            (q)->seg[sid].size --;\
+            return 0;\
+        }\
+    }
+
+#define expand_proc(q, sid, b, k_, v, cap)\
+    for(k=0; k<cap; k++){\
+        if((b)[k].key == EMPTY_TAG){\
+            (b)[k].key = (k_);\
+            (b)[k].value = (v);\
+            break;\
+        } \
+    }\
+    if (k<cap) continue;
+
+#define try_linear_resolve(q, t, bid, sid, k, v, cb_proc)\
+    for(int id=max(0,(bid)-RADIUS); id<min((q)->seg[sid].width,(bid)+RADIUS+1); id++){\
+        if(id == (bid)) continue;\
+        t = qd->seg[sid].content + id;\
+        cb_proc(q, sid, (t)->data, k, v, BIN_CAPACITY);\
+    }
+
+#define try_chain_resolve_insert(q, t, bid, sid, k, v, cb_proc)\
+    if(!t->stash) {\
+        t->stash = (entry*) calloc(DEFAULT_STASH_SIZE, sizeof(entry));\
+        t->stash_size = DEFAULT_STASH_SIZE;\
+    }\
+    cb_proc(q, sid, t->stash, k, v, t->stash_size);\
+    if(t->stash_size < MAX_STASH_SIZE) {\
+        entry* tmp = (entry*) calloc(t->stash_size*2, sizeof(entry));\
+        memcpy(tmp, t->stash, t->stash_size * sizeof(entry));\
+        t->stash_size *= 2;\
+        free(t->stash);\
+        t->stash = tmp;\
+        cb_proc(q, sid, t->stash, k, v, t->stash_size);\
+    }
+
+#define try_chain_resolve(q, t, bid, sid, k, v, cb_proc)\
+    if(t->stash){\
+        cb_proc(q, sid, t->stash, k, v, t->stash_size);\
+    }
+
+#define try_cuckoo_resolve(q, t, bid, sid, k, v, cb_proc)\
+    bid = h >> (__builtin_ctz((q)->length) + __builtin_ctz((q)->seg[sid].width));\
+    bid &= (q)->seg[sid].width - 1;\
+    t = (q)->seg[sid].content + bid;\
+    cb_proc(q, sid, (t)->data, k, v, BIN_CAPACITY);
+
+#if CONFLICT_RESOLVE == NONE
+#define try_resolve(q, t, bid, sid, k, v, cb_proc) 
+#define try_resolve_insert(q, t, bid, sid, k, v, cb_proc)
+#elif CONFLICT_RESOLVE == LINEAR
+#define try_resolve try_linear_resolve
+#define try_resolve_insert try_linear_resolve
+#elif CONFLICT_RESOLVE == CHAIN
+#define try_resolve try_chain_resolve
+#define try_resolve_insert try_chain_resolve_insert
+#elif CONFLICT_RESOLVE == CUCKOO
+#define try_resolve try_cuckoo_resolve
+#define try_resolve_insert try_cuckoo_resolve
+#endif
+
 int qd_hash_set(qd_hash* qd, uintptr_t key, uintptr_t val, int insert){
     assert(key != EMPTY_TAG);
     uint64_t h = MurmurHash3_x64_64(&key, KEY_LEN, qd->seed);
     bin* target;
-    int seg_id = h & (qd->length - 1), bin_id, after_expand = 0;
+    int seg_id = h & (qd->length - 1), bin_id, expand_chances = CONFLICT_RESOLVE != CHAIN ? 1 : qd_load_factor_seg(qd->seg[seg_id]) >= 1;
 REINSERT:
     bin_id = h >> __builtin_ctz(qd->length);
     bin_id &= qd->seg[seg_id].width - 1;
     target = qd->seg[seg_id].content + bin_id;
     if(insert){
-        for(int i=0; i<BIN_CAPACITY; i++){
-            if(target->data[i].key == EMPTY_TAG){
-                target->data[i].key = key;
-                target->data[i].value = val;
-                qd->size++;
-                return 0;
-            }
-        }
-        if(!after_expand){
+        insert_proc(qd, seg_id, target->data, key, val, BIN_CAPACITY);
+        try_resolve_insert(qd, target, bin_id, seg_id, key, val, insert_proc);
+        if(expand_chances > 0){
             qd_hash_expand(qd, seg_id);
-            after_expand = 1;
+            expand_chances--;
             goto REINSERT;
         }
     }
     else{
-        for(int i=0; i<BIN_CAPACITY; i++){
-            if(target->data[i].key == key){
-                target->data[i].value = val;
-                return 0;
-            }
-        }
+        update_proc(qd, seg_id, target->data, key, val, BIN_CAPACITY);
+        try_resolve(qd, target, bin_id, seg_id, key, val, update_proc);
     }
-    return 1;
+    // Insertion failed (update never fails if key in hash)
+    bin_id = h >> __builtin_ctz(qd->length);
+    bin_id &= qd->seg[seg_id].width - 1;
+    return 1 + ((bin_id<RADIUS)<<1) + ((bin_id+RADIUS>=qd->seg[seg_id].width)<<2);
 }
 
 int qd_hash_get(qd_hash* qd, uintptr_t key, uintptr_t* result){
@@ -74,12 +174,8 @@ int qd_hash_get(qd_hash* qd, uintptr_t key, uintptr_t* result){
         seg_id = h & (qd->length - 1), bin_id = h >> __builtin_ctz(qd->length);
     bin_id &= qd->seg[seg_id].width - 1;
     bin* target = qd->seg[seg_id].content + bin_id;
-    for(int i=0; i<BIN_CAPACITY; i++){
-        if(target->data[i].key == key){
-            *result = target->data[i].value;
-            return 0;
-        }
-    }
+    query_proc(qd, seg_id, target->data, key, result, BIN_CAPACITY);
+    try_resolve(qd, target, bin_id, seg_id, key, result, query_proc);
     return 1;
 };
 
@@ -89,31 +185,74 @@ int qd_hash_del(qd_hash* qd, uintptr_t key){
         seg_id = h & (qd->length - 1), bin_id = h >> __builtin_ctz(qd->length);
     bin_id &= qd->seg[seg_id].width - 1;
     bin* target = qd->seg[seg_id].content + bin_id;
-    for(int i=0; i<BIN_CAPACITY; i++){
-        if(target->data[i].key == key){
-            target->data[i].key = EMPTY_TAG;
-            qd->size --;
-            return 0;
-        }
-    }
+    delete_proc(qd, seg_id, target->data, key, NULL, BIN_CAPACITY);
+    try_resolve(qd, target, bin_id, seg_id, key, NULL, delete_proc);
     return 1;
 };
 
 int qd_hash_expand(qd_hash* qd, int seg_id){
-    uint64_t bin_id, width = qd->seg[seg_id].width * 2;
-    int slen = __builtin_ctz(qd->length);
+    uint64_t bin_id, width = qd->seg[seg_id].width * 2, h;
+    int slen = __builtin_ctz(qd->length), k;
     bin *new_content = (bin*) calloc(width, sizeof(bin)),
         *old = qd->seg[seg_id].content, 
         *new_bin;
     for(int i=0; i<qd->seg[seg_id].width; i++){
         for(int j=0; j<BIN_CAPACITY; j++){
             if(old->data[j].key == EMPTY_TAG) continue;
-            bin_id = MurmurHash3_x64_64(&(old->data[j].key), KEY_LEN, qd->seed) >> slen;
+            h = MurmurHash3_x64_64(&(old->data[j].key), KEY_LEN, qd->seed);
+            bin_id = h >> slen;
             bin_id &= width - 1;
             new_bin = new_content + bin_id;
+            #if !CONFLICT_RESOLVE || CONFLICT_RESOLVE == CHAIN
             new_bin->data[j].key = old->data[j].key;
             new_bin->data[j].value = old->data[j].value;
+            #else 
+            for(k=0; k<BIN_CAPACITY; k++){
+                if(new_bin->data[k].key != EMPTY_TAG) continue;
+                new_bin->data[k].key = old->data[j].key;
+                new_bin->data[k].value = old->data[j].value;
+            }
+            if(k<BIN_CAPACITY) continue;
+            #endif
+            // From here we need to apply conflict resolution
+            #if CONFLICT_RESOLVE == LINEAR
+            for(int id=max(0,bin_id-RADIUS); id<min(qd->seg[seg_id].width,bin_id+RADIUS+1); id++){
+                if(id == bin_id) continue;
+                new_bin = new_content + id;
+                for(k=0; k<BIN_CAPACITY; k++){
+                    if(new_bin->data[k].key != EMPTY_TAG) continue;
+                    new_bin->data[k].key = old->data[j].key;
+                    new_bin->data[k].value = old->data[j].value;
+                    break;
+                }
+                if(k<BIN_CAPACITY) break;
+            }
+            #elif CONFLICT_RESOLVE == CUCKOO
+             // From here we need to apply conflict resolution
+            bin_id = h >> (__builtin_ctz(qd->length) + __builtin_ctz(qd->seg[seg_id].width));
+            bin_id &= qd->seg[seg_id].width - 1;
+            new_bin = qd->seg[seg_id].content + bin_id;
+            for(k=0; k<BIN_CAPACITY; k++){
+                if(new_bin->data[k].key != EMPTY_TAG) continue;
+                new_bin->data[k].key = old->data[j].key;
+                new_bin->data[k].value = old->data[j].value;
+            }
+            #endif
         }
+        #if CONFLICT_RESOLVE == CHAIN
+        if(old->stash){
+            for(int j=0; j<old->stash_size; j++){
+                if(old->stash[j].key == EMPTY_TAG) continue;
+                h = MurmurHash3_x64_64(&(old->stash[j].key), KEY_LEN, qd->seed);
+                bin_id = h >> slen;
+                bin_id &= width - 1;
+                new_bin = new_content + bin_id;
+                expand_proc(qd, seg_id, new_bin->data, old->stash[j].key, old->stash[j].value, BIN_CAPACITY);
+                try_chain_resolve_insert(qd, new_bin, bin_id, seg_id, old->stash[j].key, old->stash[j].value, expand_proc);
+            }
+        }
+        free(old->stash);
+        #endif
         old++;
     }
     free(qd->seg[seg_id].content);
@@ -123,6 +262,19 @@ int qd_hash_expand(qd_hash* qd, int seg_id){
     return 0;
 }
 
+double qd_load_factor(qd_hash* qd){
+    int tot_cap = 0;
+    for (int i=0; i<qd->length; i++){
+        tot_cap += qd->seg[i].width;
+    }
+    return (double) qd->size / (tot_cap * BIN_CAPACITY);
+}
+
+double qd_load_factor_seg(segment s){
+    return (double) s.size / (s.width * BIN_CAPACITY);
+}
+
+#ifdef STANDALONE
 int main(int argc, char* argv[]){
     uint64_t seed = 0, num_entries = 4000000, length = 16, width = 1<<15;
     int error;
@@ -217,7 +369,7 @@ EXIT:
     qd_hash_destroy(qd);
     return 0;
 }
-
+#endif
 
 // ===================== Murmur3 Hash ===========================
 
@@ -351,5 +503,5 @@ uint64_t MurmurHash3_x64_64 ( const void * key, const int len,
   h1 += h2;
   h2 += h1;
 
-  return h2; 
+  return h2^h1; 
 }

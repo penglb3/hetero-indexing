@@ -168,7 +168,7 @@ class HashBenchmark{
     int num_of_pm;
     std::vector<std::chrono::nanoseconds> latency;
 public:
-    int step_count;
+    unsigned long step_count;
     // workload data
     std::vector<double> ps;
     std::unordered_map<hash_key_t, hash_value_t> groundtrue_hashmap;

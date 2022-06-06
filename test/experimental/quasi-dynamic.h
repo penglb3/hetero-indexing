@@ -10,9 +10,25 @@
 
 __BEGIN_DECLS
 
+
+#define NONE 0
+#define LINEAR 1
+#define CHAIN  2
+#define CUCKOO 3
+
+#define RADIUS 2
+#define CONFLICT_RESOLVE CHAIN
+
 #define KEY_LEN 8
 #define VAL_LEN 8
+
+#if CONFLICT_RESOLVE == CHAIN
+#define BIN_CAPACITY 7
+#define DEFAULT_STASH_SIZE 4
+#define MAX_STASH_SIZE 32
+#else
 #define BIN_CAPACITY 8
+#endif
 
 #define EMPTY_TAG 0
 
@@ -21,11 +37,15 @@ typedef struct entry{
 } entry;
 
 typedef struct entry_bin{
+#if CONFLICT_RESOLVE == CHAIN
+    int stash_size;
+    entry* stash;
+#endif
     entry data[BIN_CAPACITY];
 } bin;
 
 typedef struct s{
-    uint64_t width;
+    uint32_t width, size;
     bin* content; 
 } segment;
 
@@ -44,6 +64,8 @@ int qd_hash_set(qd_hash* qd, uintptr_t key, uintptr_t val, int insert);
 int qd_hash_get(qd_hash* qd, uintptr_t key, uintptr_t* result);
 int qd_hash_del(qd_hash* qd, uintptr_t key);
 int qd_hash_expand(qd_hash* qd, int seg_id);
+double qd_load_factor(qd_hash* qd);
+double qd_load_factor_seg(segment s);
 
 /**
  * @brief 64-bit Murmur3 hash 

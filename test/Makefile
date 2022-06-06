@@ -58,5 +58,12 @@ $(HETERO_DIR)/raw_art.o: $(HETERO_DIR)/art.c
 $(LEVEL_EXEC) : test_dram_level_hash.o $(LEVEL_OBJS:%.o=$(LEVEL_DIR)/%.o)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+############### QD ########################
+qd.test: experimental/qd_hash.o test_dram_quasi.o 
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+experimental/qd_hash.o: experimental/quasi-dynamic.cpp experimental/quasi-dynamic.h
+	$(CXX) $(CXXFLAGS) -o $@ -c $<
+
 clean:
 	rm -rf *.o $(HETERO_EXEC) $(CONTROL) $(LEVEL_EXEC) $(ART)
