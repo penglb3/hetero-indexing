@@ -14,8 +14,8 @@ YCSB_EXEC = '/home/plb/ycsb-0.17.0/bin/ycsb.sh' # The YCSB executable path
 
 MILLION = 1000000 # The unit for workload
 # [Generation properties] Change them to your need.
-workload_types = 'a'
-WL_COUNTS = [{'load':1024, 'run':1024}]#{'load': 3, 'run': 3}]
+workload_types = 'abcd'
+WL_COUNTS = [{'load':64, 'run':64}]#{'load': 3, 'run': 3}]
 DISTRIBUTION = 'zipfian'
 OVERRIDE = False
 # ---------------- Parameters END ------------

@@ -17,7 +17,7 @@ __BEGIN_DECLS
 #define REHASH 3
 
 #define RADIUS 2
-#define CONFLICT_RESOLVE NONE
+#define CONFLICT_RESOLVE CHAIN
 
 #define KEY_LEN 8
 #define VAL_LEN 8

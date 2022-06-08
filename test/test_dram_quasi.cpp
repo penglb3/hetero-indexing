@@ -64,7 +64,7 @@ int main(int argc, char ** argv){
                 // IMPORTANT!! verify the correctness
                 if (error_code || read_result != op.value){
                     if(error_code)
-                        printf("Key %x not found! @step%lu\n", op.key, hm.step_count);
+                        printf("Key %lx not found! @step%lu\n", op.key, hm.step_count);
                     else
                         std::cout << "READ value wrong !! " << "Read Key : [" << op.key << "] You Read: [" << read_result << "] Expected Value is: [" << op.value << "]" << std::endl; 
                     std::cout << "You should fix this BUG!" << std::endl;

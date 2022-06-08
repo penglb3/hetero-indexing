@@ -220,7 +220,7 @@ int qd_hash_expand(qd_hash* qd, int seg_id){
             #if CONFLICT_RESOLVE == LINEAR
             for(int id=max(0,bin_id-RADIUS); id<min(qd->seg[seg_id].width, bin_id+RADIUS+1); id++){
                 if(id == bin_id) continue;
-                new_bin = new_content + id;
+                new_bin = new_content + id; // THE VERY LINE STOPPING US FROM USING try_resolve
                 for(k=0; k<BIN_CAPACITY; k++){
                     if(new_bin->data[k].key != EMPTY_TAG) continue;
                     new_bin->data[k].key = old->data[j].key;
@@ -231,10 +231,9 @@ int qd_hash_expand(qd_hash* qd, int seg_id){
             }
             #elif CONFLICT_RESOLVE == REHASH
              // From here we need to apply conflict resolution
-            // try_cuckoo_resolve(qd, new_bin, bin_id, seg_id, old->data[j].key, old->data[j].value, expand_proc);
             bin_id = h >> (__builtin_ctz(qd->length) + __builtin_ctz(qd->seg[seg_id].width));
             bin_id &= qd->seg[seg_id].width - 1;
-            new_bin = new_content + bin_id;
+            new_bin = new_content + bin_id; // THE VERY LINE STOPPING US FROM USING try_resolve
             expand_proc(qd, seg_id, new_bin->data, old->data[j].key, old->data[j].value, BIN_CAPACITY);
             #endif
         }
@@ -261,7 +260,7 @@ int qd_hash_expand(qd_hash* qd, int seg_id){
 }
 
 double qd_load_factor(qd_hash* qd){
-    int tot_cap = 0;
+    unsigned int tot_cap = 0;
     for (int i=0; i<qd->length; i++){
         tot_cap += qd->seg[i].width;
     }
@@ -282,10 +281,12 @@ double qd_load_factor_seg(segment s){
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
+// Quick test for validation and debugging.
 int main(int argc, char* argv[]){
     uint64_t seed = 0, num_entries = 4000000, length = 16, width = 1<<15;
-    int error;
+    int error = 0;
     double lf = -1;
+    uint64_t key, val;
     while((error = getopt(argc, argv, "s:l:w:n:"))!=-1)
         switch(error){
             case 'l': length = 1<<atoi(optarg); break;
@@ -300,8 +301,6 @@ int main(int argc, char* argv[]){
     qd_hash* qd = qd_hash_init(length, width, seed);
     printf("Initial size = %ux%lux%d, # of samples = %lu, seed: %u\n", qd->length, width, BIN_CAPACITY, num_entries, qd->seed);
 
-    uint64_t key, val;
-    error = 0;
     printf("[Insert] ");
     clock_t start = clock(), finish;
     for(uint64_t key=1; key<=num_entries; key++){

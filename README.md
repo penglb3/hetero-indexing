@@ -2,10 +2,17 @@
 Indexing system for heterogeneous storages. 
 
 ## Requirements
+- GFLAGS
 - GCC >= 4.9.0 (You need to replace the atomic functions with other implementation if your compiler doesn't support C11.)
 
 ## Test Environments
 ### Env #1
+- CPU: Intel Xeon Gold 6230N
+- DRAM: 192GB DDR4 2666
+- OS: CentOS 7 Linux
+- Compiler: GCC 10.2.1 (Red Hat Developer Toolset 10.1)
+
+### Env #2 (validation only)
 - CPU: AMD Ryzen 5 3600
 - DRAM: 16G DDR4 3200
 - OS: WSL2-Ubuntu 18.04.5 LTS

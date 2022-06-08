@@ -20,9 +20,9 @@ MEMTYPE_PERCENTAGE = 20  # If 20, Then TOP 20% will be marked as mem_type
 # Set to None if you want to generate for all logs
 # !! UNIT is million !!
 MILLION = 1000000
-WL_COUNTS = [{'load': 1024, 'run': 1024}]
+WL_COUNTS = [{'load': 64, 'run': 64}]
 # Will operate only on these workload types
-workload_types = 'a'
+workload_types = 'abcd'
 
 # ---------------- Parameters END ------------
 OPS = ["INSERT", "READ", "UPDATE", "DELETE", "READMODIFYWRITE"]
@@ -89,6 +89,7 @@ for wcount in WL_COUNTS:
                 f.write(' '.join(wordlist) + '\n')
         print()
         del lines
+        del freq
         gc.collect()
 print("############## ALL FINISHED ##############")
 # %%
